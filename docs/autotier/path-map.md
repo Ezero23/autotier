@@ -1,6 +1,6 @@
 # AutoTier Phase 0 — 请求链路图（path-map）
 
-> 基座：`farion1231/cc-switch` @ `30409878bdbdf1c7091c559d6afc367a052da39c`（v3.18.0）
+> 基座：`farion1231/cc-switch` @ `30409878bdbdf1c7091c559d6afc367a052da39c`(Package `3.18.0`;describe `v3.18.0-36-g30409878`)
 > 所有路径相对 `bases/cc-switch/`；行号基于上述锁定 commit。
 > 本图聚焦 Claude Code（Anthropic Messages，`POST /v1/messages`）的流式与非流式路径。
 
@@ -103,7 +103,7 @@ UsageLogger::log_with_calculation → INSERT INTO proxy_request_logs（SQLite）
 | 落库 | `src-tauri/src/proxy/usage/logger.rs:446` `log_with_calculation` → `:651` INSERT；幂等 `INSERT OR REPLACE/IGNORE`（`:165-167`） | 表 `proxy_request_logs`（`src-tauri/src/database/schema.rs:197-211`），主键 `request_id`，含 `request_model`/`model`/`pricing_model`/`session_id`/token/cost/latency/status |
 | 成本计算 | `src-tauri/src/proxy/usage/calculator.rs`（`CostCalculator`）+ `model_pricing` 表（`schema.rs:236-241`） | 价格按 `pricing_model` 行解析；缺价有回填逻辑 |
 
-**Usage 收口点结论**：统一收口于 `log_usage_internal`（`response_processor.rs:620`）→ `UsageLogger::log_with_calculation`。AutoTier 的 Routing Decision Finalizer 应挂在与 `spawn_log_usage` 相同的触发点（流式：`SseUsageCollector` 完成回调；非流式：`handle_non_streaming` 的解析后），以 `session:{message_id}` 为关联键反查/回填。
+**Usage 收口点结论**：统一收口于 `log_usage_internal`（`response_processor.rs:620`）→ `UsageLogger::log_with_calculation`。AutoTier 的 Routing Decision Finalizer 应挂在与 `spawn_log_usage` 相同的触发点（流式：`SseUsageCollector` 完成回调；非流式：`handle_non_streaming` 的解析后），用 `RequestContext` 携带的 `decision_id` 直接回填（AMEND-001 第 4 节，不做数据库反查）。
 
 ## 3. 各阶段信息可用性矩阵
 
@@ -122,14 +122,14 @@ UsageLogger::log_with_calculation → INSERT INTO proxy_request_logs（SQLite）
 理由：
 
 1. 此处同时持有：完整原始请求体（`body`，`:174`）、`ctx.request_model`、`ctx.provider` 与 failover 链（`ctx.get_providers()`）、`ctx.session_id`、`app_type`——Shadow 特征提取与 Slot 候选计算所需信息全部就位。
-2. 位于任何改写之前：模型映射（`forwarder.rs:1162`）、`[1m]` 剥离、协议转换（`forwarder.rs:1504`）、私有参数过滤均尚未发生，**天然满足 FR-DEC-003（final == original）**——Shadow 只读不写，`body.clone()` 传给决策器即可。
+2. 位于任何改写之前：模型映射（`forwarder.rs:1162`）、`[1m]` 剥离、协议转换（`forwarder.rs:1504`）、私有参数过滤均尚未发生——Shadow 只读不写，`body.clone()` 传给决策器即可。**不变量按 AMEND-001 第 2 节表述：`autotier_mutated_request == false` 且 `actual_outbound == baseline_outbound`；不得假设 `actual_outbound == client_requested`（基座自身的 ModelMapping/Failover/协议转换本来就可能改变出站值）。**
 3. 单点覆盖所有 Claude 入口（`handle_messages` 与 Claude Desktop 网关都经此函数）；对 Codex/Gemini 入口可后续按同模式扩展。
 4. 失败安全：决策器用 `tokio::spawn` + panic 隔离调用，异常只影响决策记录，不影响转发（满足 NFR-002、FR-MODE-003）。
 5. Off 模式 = 跳过该调用，请求路径与基座逐字节一致（Parity 验证见 `baseline-verification.md` 第 4 节）。
 
 辅助挂点（不改动转发逻辑）：
 
-- **Decision-Usage 关联**：Shadow 决策落库用自生成 `autotier:{uuid}` 主键；在 `SseUsageCollector` 完成回调 / `handle_non_streaming` 解析处（`response_processor.rs:237`、`:493` 回调）捕获 `message_id`，回填决策行的 usage 关联键 `session:{message_id}`，或直接复制 `proxy_request_logs` 的 token/cost 字段完成 Finalize。
+- **Decision-Usage 关联（AMEND-001 第 4 节冻结，废止数据库反查方案）**：入口生成 `decision_id` 并挂入 `RequestContext` 贯穿请求生命周期；响应解析处（`response_processor.rs:237`、`:493` 回调）捕获 `upstream_message_id` 写回 Context；Finalize 直接用同一 Context 的 `decision_id` UPDATE 决策行，回填 `upstream_message_id` / `usage_request_id` / `actual_outbound_*` 与 usage 数据。**不做** `session:{message_id}` 反查 `proxy_request_logs`（Decision Store 与 Usage Logger 各自 `tokio::spawn`，反查有异步竞态）。`decision_id` / `upstream_message_id` / `usage_request_id` / `session_id_hash` 四者不得混用。
 - **模式与配置的读取**：决策器开关读取 `autotier_routing_config`（新表），不侵入 `ProxyConfig`。
 
 ## 5. Provider-specific Slot 解析涉及模块
@@ -151,7 +151,7 @@ UsageLogger::log_with_calculation → INSERT INTO proxy_request_logs（SQLite）
 - 引擎：`rusqlite`（同步连接 + `Mutex`，`lock_conn!` 宏）。
 - 建表：`Database::create_tables_on_conn`（`src-tauri/src/database/schema.rs:24`），全部 `CREATE TABLE IF NOT EXISTS`，应用启动时执行。
 - 版本迁移：`apply_schema_migrations_on_conn`（`schema.rs:415`）读取 `PRAGMA user_version`（`schema.rs:2791`），按 0→1→…→16 顺序应用幂等迁移并 `set_user_version`（`schema.rs:2796`）。当前最新版本 **16**。
-- AutoTier 挂接方式：在 `create_tables_on_conn` 追加 `autotier_provider_slots` / `autotier_routing_config` / `autotier_routing_decisions` / `autotier_decision_labels` 的 `CREATE TABLE IF NOT EXISTS`（前缀隔离，符合 PRD 11.6），并将 user_version 提升至 17 做一次性幂等迁移；`database/tests.rs` 已有迁移测试模式可复用（如 `:2946` 起的版本跳跃测试）。
+- AutoTier 挂接方式：在 `create_tables_on_conn` 追加 `autotier_provider_slots` / `autotier_routing_config` / `autotier_routing_decisions` / `autotier_decision_labels` 的 `CREATE TABLE IF NOT EXISTS`（前缀隔离，符合 PRD 11.6），并按 **AMEND-001 第 5 节规则** `migration version = 导入基座当前 user_version + 1` 做一次性幂等迁移（当前锁定基座 `user_version = 16`，计算结果为 17，但 17 不是常量，Phase 2 开始前必须重读实际导入基座的 `user_version`）；`database/tests.rs` 已有迁移测试模式可复用（如 `:2946` 起的版本跳跃测试）。
 - JSON→SQLite 历史数据迁移独立存在于 `src-tauri/src/database/migration.rs`（与 schema 版本迁移不同机制，AutoTier 不涉及）。
 
 ## 7. 关闭 AutoTier 后的 Parity（行为一致性）验证锚点

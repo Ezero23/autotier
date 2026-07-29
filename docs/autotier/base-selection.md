@@ -8,7 +8,8 @@
 **选定基座：`farion1231/cc-switch`**
 
 - 仓库：https://github.com/farion1231/cc-switch （分支 `main`）
-- **锁定 Commit SHA：`30409878bdbdf1c7091c559d6afc367a052da39c`**（`chore(presets): add PackyCode backup endpoints`，2026-07-29，版本 v3.18.0）
+- **锁定 Commit SHA：`30409878bdbdf1c7091c559d6afc367a052da39c`**（`chore(presets): add PackyCode backup endpoints`，2026-07-29）
+- **准确版本表述（AMEND-001 修正）**：Package version `3.18.0`;`git describe` = `v3.18.0-36-g30409878`，即 v3.18.0 Tag 之后第 36 个提交，并非 Tag 本身
 - 落选基座：`BigStrongSun/ccswitchmulti` @ `2bbe8d204b8b57eb638132c02b8f715a70f530d5`（v3.16.5-22，2026-07-27）
 
 核心理由：AutoTier 是 **Claude Code-first** 的 Shadow 观测产品，需要长期跟随上游演进；ccswitchmulti 是一个 **Codex-first** 的重度分叉（领先上游 535 commits、落后 161 commits），其差异化投入全部在 Codex 多模型路由上，Claude 路径停留在 v3.16.5 时代的上游代码，选择它等于同时背上"落后上游"和"维护无关 Codex 功能"两份成本。
@@ -19,7 +20,7 @@
 |---|---|---|
 | 分支 | `main` | `main` |
 | Commit SHA | `30409878bdbdf1c7091c559d6afc367a052da39c` | `2bbe8d204b8b57eb638132c02b8f715a70f530d5` |
-| 版本 | v3.18.0 | v3.16.5-22 |
+| 版本 | Package `3.18.0`;describe `v3.18.0-36-g30409878` | v3.16.5-22 |
 | 末次提交时间 | 2026-07-29 | 2026-07-27 |
 | 定位 | Claude Code / Codex / Gemini CLI 多客户端供应商切换 + 本地代理 | Codex 多模型路由（OpenAI 订阅与 DeepSeek/Qwen/本地/第三方 OpenAI-compatible 合并到 Codex） |
 | 与上游关系 | 即上游本体 | fork of farion1231/cc-switch，**ahead 535 / behind 161**（GitHub compare API 与本地 `git rev-list --left-right --count` 双重确认） |
