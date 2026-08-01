@@ -53,7 +53,10 @@ use std::sync::Mutex;
 
 /// 当前 Schema 版本号
 /// 每次修改表结构时递增，并在 schema.rs 中添加相应的迁移逻辑
-pub(crate) const SCHEMA_VERSION: i32 = 16;
+///
+/// v17: AutoTier — autotier_provider_slots / autotier_routing_config /
+///      autotier_routing_decisions / autotier_decision_labels（PRD §11）
+pub(crate) const SCHEMA_VERSION: i32 = 17;
 
 /// 安全地序列化 JSON，避免 unwrap panic
 pub(crate) fn to_json_string<T: Serialize>(value: &T) -> Result<String, AppError> {

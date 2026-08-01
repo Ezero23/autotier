@@ -402,6 +402,176 @@ impl Database {
             [],
         );
 
+        // === AutoTier 表（PRD §11，autotier_ 前缀避免污染上游概念） ===
+
+        // autotier_provider_slots（PRD §11.1）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_provider_slots (
+                provider_id TEXT NOT NULL,
+                slot TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                capability_status TEXT NOT NULL DEFAULT 'unknown',
+                supports_tools INTEGER,
+                supports_streaming INTEGER,
+                supports_vision INTEGER,
+                context_limit INTEGER,
+                api_format TEXT,
+                pricing_source TEXT,
+                capability_source TEXT,
+                verified_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (provider_id, slot)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier_provider_slots 失败: {e}")))?;
+
+        // autotier_routing_config（PRD §11.2，单行 id=1）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_routing_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                mode TEXT NOT NULL DEFAULT 'shadow',
+                retention_days INTEGER NOT NULL DEFAULT 30,
+                raw_prompt_opt_in INTEGER NOT NULL DEFAULT 0,
+                classifier_version TEXT NOT NULL,
+                feature_version TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier_routing_config 失败: {e}")))?;
+
+        // autotier_routing_decisions（PRD §11.3）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_routing_decisions (
+                decision_id TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                app_type TEXT NOT NULL,
+                session_id_hash TEXT NOT NULL,
+                mode TEXT NOT NULL,
+
+                client_requested_model TEXT NOT NULL,
+                initial_selected_provider TEXT,
+
+                baseline_outbound_model TEXT,
+                baseline_outbound_provider TEXT,
+
+                recommended_slot TEXT,
+                candidate_model TEXT,
+                candidate_provider TEXT,
+
+                actual_outbound_model TEXT,
+                actual_outbound_provider TEXT,
+
+                autotier_mutated_request INTEGER NOT NULL DEFAULT 0,
+
+                upstream_message_id TEXT,
+                usage_request_id TEXT,
+
+                complexity_score REAL,
+                confidence REAL,
+                reason_codes_json TEXT NOT NULL DEFAULT '[]',
+                unsafe_reasons_json TEXT NOT NULL DEFAULT '[]',
+                safe_to_execute INTEGER NOT NULL DEFAULT 0,
+
+                feature_json TEXT NOT NULL,
+                feature_version TEXT NOT NULL,
+                classifier_version TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+
+                actual_input_tokens INTEGER,
+                actual_output_tokens INTEGER,
+                actual_cache_read_tokens INTEGER,
+                actual_cache_write_5m_tokens INTEGER,
+                actual_cache_write_1h_tokens INTEGER,
+                actual_cost_usd TEXT,
+
+                candidate_cost_low_usd TEXT,
+                candidate_cost_base_usd TEXT,
+                candidate_cost_high_usd TEXT,
+                cost_assumptions_json TEXT NOT NULL DEFAULT '[]',
+
+                status_code INTEGER,
+                outcome TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                fallback_count INTEGER NOT NULL DEFAULT 0,
+                is_complete INTEGER NOT NULL DEFAULT 0,
+                error_code TEXT
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier_routing_decisions 失败: {e}")))?;
+
+        // autotier_decision_labels（PRD §11.4，CASCADE 删除）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_decision_labels (
+                decision_id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                reason TEXT,
+                note TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (decision_id)
+                    REFERENCES autotier_routing_decisions(decision_id)
+                    ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier_decision_labels 失败: {e}")))?;
+
+        // AutoTier 索引（PRD §11.5）
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_created_at
+             ON autotier_routing_decisions(created_at)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier decisions created_at 索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_session
+             ON autotier_routing_decisions(session_id_hash)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier decisions session 索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_client_model
+             ON autotier_routing_decisions(client_requested_model)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier decisions client_model 索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_slot
+             ON autotier_routing_decisions(recommended_slot)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier decisions slot 索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_classifier
+             ON autotier_routing_decisions(classifier_version)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier decisions classifier 索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_complete
+             ON autotier_routing_decisions(is_complete)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier decisions complete 索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_autotier_labels_label
+             ON autotier_decision_labels(label)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 autotier labels label 索引失败: {e}")))?;
+
         Ok(())
     }
 
@@ -510,6 +680,11 @@ impl Database {
                         log::info!("迁移数据库从 v15 到 v16（重建 Codex 会话用量）");
                         Self::migrate_v15_to_v16(conn)?;
                         Self::set_user_version(conn, 16)?;
+                    }
+                    16 => {
+                        log::info!("迁移数据库从 v16 到 v17（AutoTier: 决策日志、配置、Slot 与标注表）");
+                        Self::migrate_v16_to_v17(conn)?;
+                        Self::set_user_version(conn, 17)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1521,6 +1696,174 @@ impl Database {
     fn migrate_v15_to_v16(conn: &Connection) -> Result<(), AppError> {
         let codex_dir = crate::codex_config::get_codex_config_dir();
         crate::services::session_usage_codex::reset_codex_usage_on_conn(conn, &codex_dir)
+    }
+
+    /// v16 → v17：AutoTier 表迁移
+    ///
+    /// 创建四张 `autotier_*` 表及索引（PRD §11）。
+    /// 所有建表使用 `CREATE TABLE IF NOT EXISTS` 保证幂等：
+    /// - 对全新数据库（create_tables_on_conn 已建表）无副作用
+    /// - 对已迁移的数据库重复运行不报错
+    /// - 不修改任何现有基座表
+    ///
+    /// Migration 版本规则（PRD §11.6）：version = 导入基座 user_version + 1。
+    /// 当前锁定基座 user_version = 16，故 AutoTier migration version = 17。
+    /// 17 不是产品常量；Phase 2 开始前已重新读取实际导入基座的 user_version 确认。
+    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+        // autotier_provider_slots（PRD §11.1）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_provider_slots (
+                provider_id TEXT NOT NULL,
+                slot TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                capability_status TEXT NOT NULL DEFAULT 'unknown',
+                supports_tools INTEGER,
+                supports_streaming INTEGER,
+                supports_vision INTEGER,
+                context_limit INTEGER,
+                api_format TEXT,
+                pricing_source TEXT,
+                capability_source TEXT,
+                verified_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (provider_id, slot)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_provider_slots 失败: {e}")))?;
+
+        // autotier_routing_config（PRD §11.2）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_routing_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                mode TEXT NOT NULL DEFAULT 'shadow',
+                retention_days INTEGER NOT NULL DEFAULT 30,
+                raw_prompt_opt_in INTEGER NOT NULL DEFAULT 0,
+                classifier_version TEXT NOT NULL,
+                feature_version TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_routing_config 失败: {e}")))?;
+
+        // autotier_routing_decisions（PRD §11.3）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_routing_decisions (
+                decision_id TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                app_type TEXT NOT NULL,
+                session_id_hash TEXT NOT NULL,
+                mode TEXT NOT NULL,
+
+                client_requested_model TEXT NOT NULL,
+                initial_selected_provider TEXT,
+
+                baseline_outbound_model TEXT,
+                baseline_outbound_provider TEXT,
+
+                recommended_slot TEXT,
+                candidate_model TEXT,
+                candidate_provider TEXT,
+
+                actual_outbound_model TEXT,
+                actual_outbound_provider TEXT,
+
+                autotier_mutated_request INTEGER NOT NULL DEFAULT 0,
+
+                upstream_message_id TEXT,
+                usage_request_id TEXT,
+
+                complexity_score REAL,
+                confidence REAL,
+                reason_codes_json TEXT NOT NULL DEFAULT '[]',
+                unsafe_reasons_json TEXT NOT NULL DEFAULT '[]',
+                safe_to_execute INTEGER NOT NULL DEFAULT 0,
+
+                feature_json TEXT NOT NULL,
+                feature_version TEXT NOT NULL,
+                classifier_version TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+
+                actual_input_tokens INTEGER,
+                actual_output_tokens INTEGER,
+                actual_cache_read_tokens INTEGER,
+                actual_cache_write_5m_tokens INTEGER,
+                actual_cache_write_1h_tokens INTEGER,
+                actual_cost_usd TEXT,
+
+                candidate_cost_low_usd TEXT,
+                candidate_cost_base_usd TEXT,
+                candidate_cost_high_usd TEXT,
+                cost_assumptions_json TEXT NOT NULL DEFAULT '[]',
+
+                status_code INTEGER,
+                outcome TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                fallback_count INTEGER NOT NULL DEFAULT 0,
+                is_complete INTEGER NOT NULL DEFAULT 0,
+                error_code TEXT
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_routing_decisions 失败: {e}")))?;
+
+        // autotier_decision_labels（PRD §11.4）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS autotier_decision_labels (
+                decision_id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                reason TEXT,
+                note TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (decision_id)
+                    REFERENCES autotier_routing_decisions(decision_id)
+                    ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_decision_labels 失败: {e}")))?;
+
+        // 索引（PRD §11.5）
+        for (idx_name, sql) in [
+            (
+                "idx_autotier_decisions_created_at",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_created_at ON autotier_routing_decisions(created_at)",
+            ),
+            (
+                "idx_autotier_decisions_session",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_session ON autotier_routing_decisions(session_id_hash)",
+            ),
+            (
+                "idx_autotier_decisions_client_model",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_client_model ON autotier_routing_decisions(client_requested_model)",
+            ),
+            (
+                "idx_autotier_decisions_slot",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_slot ON autotier_routing_decisions(recommended_slot)",
+            ),
+            (
+                "idx_autotier_decisions_classifier",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_classifier ON autotier_routing_decisions(classifier_version)",
+            ),
+            (
+                "idx_autotier_decisions_complete",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_complete ON autotier_routing_decisions(is_complete)",
+            ),
+            (
+                "idx_autotier_labels_label",
+                "CREATE INDEX IF NOT EXISTS idx_autotier_labels_label ON autotier_decision_labels(label)",
+            ),
+        ] {
+            conn.execute(sql, [])
+                .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: 索引 {idx_name} 失败: {e}")))?;
+        }
+
+        Ok(())
     }
 
     /// 插入默认模型定价数据
@@ -3080,7 +3423,7 @@ mod tests {
 
         Database::apply_schema_migrations_on_conn(&conn)?;
 
-        assert_eq!(Database::get_user_version(&conn)?, 16);
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
         let counts: (i64, i64, i64, i64) = conn.query_row(
             "SELECT
                 (SELECT COUNT(*) FROM proxy_request_logs WHERE data_source = 'codex_session'),
