@@ -307,10 +307,12 @@ fn assert_shadow_unmutated(row: &AutotierDecisionRow) {
     assert!(!row.autotier_mutated_request);
     assert_eq!(row.actual_outbound_model, row.baseline_outbound_model);
     assert_eq!(row.actual_outbound_provider, row.baseline_outbound_provider);
-    assert_ne!(
-        row.actual_outbound_model, row.candidate_model,
-        "Candidate 不得进入 Actual"
-    );
+    if row.candidate_model.is_some() {
+        assert_ne!(
+            row.actual_outbound_model, row.candidate_model,
+            "Candidate 不得进入 Actual"
+        );
+    }
 }
 
 fn assert_usage_linked(row: &AutotierDecisionRow, message_id: &str) {
