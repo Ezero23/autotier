@@ -25,6 +25,7 @@ mod decision;
 mod extractor;
 mod features;
 mod observer;
+mod writer;
 
 pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
@@ -33,7 +34,11 @@ pub use decision::{
 pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
 pub use observer::{
-    build_shadow_row, hash_session_id, is_shadow_enabled, shadow_config_for_observe, ShadowInput,
+    build_shadow_row, is_shadow_enabled, shadow_config_for_observe, ShadowInput,
+};
+pub use writer::{
+    enqueue_create, hash_session_id, load_or_create_session_secret, writer_for, DecisionEvent,
+    DecisionWriter, FinalizeEvent,
 };
 
 use crate::app_config::AppType;

@@ -9,10 +9,9 @@
 
 use crate::app_config::AppType;
 use crate::database::{AutotierDecisionRow, AutotierRoutingConfigDto};
-use sha2::{Digest, Sha256};
 
 use super::{
-    extract_features, shadow_decide, DecisionInput, RoutingDecision, RoutingMode, SessionIdHash,
+    extract_features, hash_session_id, shadow_decide, DecisionInput, RoutingDecision, RoutingMode,
     FEATURE_VERSION,
 };
 
@@ -35,15 +34,6 @@ pub fn shadow_config_for_observe<E: std::fmt::Display>(
             None
         }
     }
-}
-
-/// 对 Session ID 做 SHA-256 hex 哈希。
-///
-/// Session ID 原文不进入决策持久化结构，只存哈希（PRD §9.1 隐私约束）。
-pub fn hash_session_id(session_id: &str) -> SessionIdHash {
-    let mut hasher = Sha256::new();
-    hasher.update(session_id.as_bytes());
-    SessionIdHash(format!("{:x}", hasher.finalize()))
 }
 
 /// Shadow 观测所需的请求元数据。
@@ -73,8 +63,9 @@ pub fn build_shadow_row(
     input: &ShadowInput,
     body: &serde_json::Value,
     _config: &AutotierRoutingConfigDto,
+    secret: &[u8],
 ) -> (AutotierDecisionRow, RoutingDecision) {
-    let session_hash = hash_session_id(&input.session_id);
+    let session_hash = hash_session_id(&input.session_id, secret);
     let features = extract_features(body, input.app_type.clone(), &session_hash.0);
 
     let decision_input = DecisionInput {
@@ -202,9 +193,12 @@ pub fn build_shadow_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::autotier::hash_session_id;
     use crate::autotier::ModelSlot;
     use crate::database::AutotierRoutingConfigDto;
     use serde_json::json;
+
+    const TEST_SECRET: [u8; 32] = [0x11; 32];
 
     fn short_input(model: &str, provider: &str) -> ShadowInput {
         ShadowInput {
@@ -228,7 +222,7 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (row, _dec) = build_shadow_row(&input, &body, &config);
+        let (row, _dec) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert_eq!(row.client_requested_model, "claude-sonnet-4-20250514");
         assert_eq!(row.initial_selected_provider.as_deref(), Some("provider-a"));
@@ -248,7 +242,7 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (_row, decision) = build_shadow_row(&input, &body, &config);
+        let (_row, decision) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert!(decision.is_shadow_safe(), "shadow invariant must hold");
     }
@@ -264,12 +258,13 @@ mod tests {
     }
 
     #[test]
-    fn hash_session_id_is_deterministic() {
-        let h1 = hash_session_id("sess-xyz");
-        let h2 = hash_session_id("sess-xyz");
+    fn hash_session_id_uses_hmac_not_raw_session() {
+        let h1 = hash_session_id("sess-xyz", &TEST_SECRET);
+        let h2 = hash_session_id("sess-xyz", &TEST_SECRET);
         assert_eq!(h1.0, h2.0);
         assert!(!h1.0.is_empty());
         assert_ne!(h1.0, "sess-xyz");
+        assert!(!h1.0.contains("sess-xyz"));
     }
 
     #[test]
@@ -277,7 +272,7 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (row, _) = build_shadow_row(&input, &body, &config);
+        let (row, _) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert_eq!(
             row.recommended_slot.as_deref(),
@@ -290,7 +285,7 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (row, _) = build_shadow_row(&input, &body, &config);
+        let (row, _) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert!(!row.feature_json.contains("sess-abc"));
         let parsed: serde_json::Value = serde_json::from_str(&row.feature_json).unwrap();
@@ -306,7 +301,7 @@ mod tests {
             "messages": [{"role": "user", "content": canary}]
         });
         let config = AutotierRoutingConfigDto::default();
-        let (row, _) = build_shadow_row(&input, &body, &config);
+        let (row, _) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert!(
             !row.feature_json.contains(canary),
