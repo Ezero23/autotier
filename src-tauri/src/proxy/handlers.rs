@@ -186,6 +186,32 @@ async fn handle_messages_for_app(
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
 
+    // AutoTier Shadow Observe（Phase 4）：仅提取特征+生成决策记录，不改请求/不阻塞转发。
+    // 配置非 shadow 模式时跳过；DB 写入在 tokio::spawn 里异步完成，失败只 log。
+    {
+        let autotier_config = state.db.autotier_get_config().unwrap_or_default();
+        if crate::autotier::is_shadow_enabled(&autotier_config) {
+            let decision_id = uuid::Uuid::new_v4().to_string();
+            let (row, _) = crate::autotier::build_shadow_row(
+                &crate::autotier::ShadowInput {
+                    decision_id,
+                    app_type: ctx.app_type.clone(),
+                    session_id: ctx.session_id.clone(),
+                    request_model: ctx.request_model.clone(),
+                    provider_id: ctx.provider.id.clone(),
+                },
+                &body,
+                &autotier_config,
+            );
+            let db = state.db.clone();
+            tokio::spawn(async move {
+                if let Err(e) = db.autotier_upsert_decision(&row) {
+                    log::warn!("[AutoTier] shadow decision store failed: {e}");
+                }
+            });
+        }
+    }
+
     let raw_endpoint = uri
         .path_and_query()
         .map(|path_and_query| path_and_query.as_str())

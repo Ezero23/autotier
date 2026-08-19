@@ -24,6 +24,7 @@
 mod features;
 mod decision;
 mod extractor;
+mod observer;
 
 pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
@@ -31,6 +32,7 @@ pub use decision::{
 };
 pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
+pub use observer::{build_shadow_row, hash_session_id, is_shadow_enabled, ShadowInput};
 
 use crate::app_config::AppType;
 use serde::{Deserialize, Serialize};
