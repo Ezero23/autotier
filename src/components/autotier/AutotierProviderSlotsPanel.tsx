@@ -98,6 +98,13 @@ function AutotierProviderSlotsPanelInner({
   );
 
   useEffect(() => {
+    setDrafts({});
+    setLocalOptional([]);
+    setSaveError(null);
+  }, [providerId]);
+
+  useEffect(() => {
+    if (!slotsQuery.isSuccess) return;
     setDrafts((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -109,7 +116,7 @@ function AutotierProviderSlotsPanelInner({
       }
       return changed ? next : prev;
     });
-  }, [rows]);
+  }, [rows, slotsQuery.isSuccess]);
 
   const displayRows = rows.map((row) => ({
     ...row,
@@ -321,7 +328,7 @@ function AutotierProviderSlotsPanelInner({
                         </Label>
                         <ImeSafeInput
                           id={inputId}
-                          value={drafts[row.slot] ?? ""}
+                          value={drafts[row.slot] ?? row.model_id}
                           onValueChange={(value) =>
                             setDrafts((prev) => ({
                               ...prev,
