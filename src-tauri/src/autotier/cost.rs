@@ -15,6 +15,11 @@ use serde_json::Value;
 pub const COST_ASSUMPTIONS_MAX_LEN: usize = 8192;
 pub const COST_SCHEMA_VERSION: u32 = 1;
 
+/// Phase 5B 首次交付的三类版本戳。历史 Decision 必须引用写入当日的值。
+pub const CAPABILITY_TABLE_VERSION: &str = "capability-table-v0.1";
+pub const COST_MODEL_VERSION: &str = "cost-model-v0.1";
+pub const CACHE_STATS_VERSION: &str = "cache-stats-v0.1";
+
 const MILLION: i64 = 1_000_000;
 /// High 估计：相对实际输出再增加 50%。
 const HIGH_OUTPUT_UPLIFT: &str = "0.5";
@@ -128,6 +133,12 @@ pub struct CostAssumptions {
     pub cache_write_ttl: String,
     #[serde(default = "partial_coverage")]
     pub breakdown_coverage: String,
+    #[serde(default)]
+    pub capability_table_version: String,
+    #[serde(default)]
+    pub cost_model_version: String,
+    #[serde(default)]
+    pub cache_stats_version: String,
 }
 
 fn cost_schema_version() -> u32 {
@@ -149,7 +160,23 @@ impl Default for CostAssumptions {
             assumptions: Vec::new(),
             cache_write_ttl: unknown_ttl_label(),
             breakdown_coverage: partial_coverage(),
+            capability_table_version: String::new(),
+            cost_model_version: String::new(),
+            cache_stats_version: String::new(),
         }
+    }
+}
+
+/// 空字段填入当日版本常量；已有值不覆盖（历史 Decision 可复现）。
+pub fn stamp_model_versions(doc: &mut CostAssumptions) {
+    if doc.capability_table_version.is_empty() {
+        doc.capability_table_version = CAPABILITY_TABLE_VERSION.to_string();
+    }
+    if doc.cost_model_version.is_empty() {
+        doc.cost_model_version = COST_MODEL_VERSION.to_string();
+    }
+    if doc.cache_stats_version.is_empty() {
+        doc.cache_stats_version = CACHE_STATS_VERSION.to_string();
     }
 }
 
@@ -329,6 +356,7 @@ pub fn initial_cost_assumptions_json(body: &Value) -> String {
         ..CostAssumptions::default()
     };
     push_assumption(&mut doc, ttl.assumption());
+    stamp_model_versions(&mut doc);
     serialize_cost_assumptions(&doc)
 }
 
@@ -697,5 +725,22 @@ mod tests {
         assert_eq!(doc.breakdown_coverage, "full");
         assert!(doc.assumptions.contains(&ASSUMPTION_TTL_1H.to_string()));
         assert!(doc.baseline.is_none());
+        assert_eq!(doc.capability_table_version, CAPABILITY_TABLE_VERSION);
+        assert_eq!(doc.cost_model_version, COST_MODEL_VERSION);
+        assert_eq!(doc.cache_stats_version, CACHE_STATS_VERSION);
+    }
+
+    #[test]
+    fn stamped_versions_are_not_overwritten() {
+        let mut doc = CostAssumptions {
+            capability_table_version: "capability-table-v0.0".into(),
+            cost_model_version: "cost-model-v0.0".into(),
+            cache_stats_version: "cache-stats-v0.0".into(),
+            ..CostAssumptions::default()
+        };
+        stamp_model_versions(&mut doc);
+        assert_eq!(doc.capability_table_version, "capability-table-v0.0");
+        assert_eq!(doc.cost_model_version, "cost-model-v0.0");
+        assert_eq!(doc.cache_stats_version, "cache-stats-v0.0");
     }
 }

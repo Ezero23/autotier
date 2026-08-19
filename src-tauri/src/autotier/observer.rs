@@ -336,6 +336,18 @@ mod tests {
         let unknown_doc: serde_json::Value =
             serde_json::from_str(&unknown.cost_assumptions_json).unwrap();
         assert_eq!(unknown_doc["cache_write_ttl"], "unknown");
+        assert_eq!(
+            unknown_doc["capability_table_version"],
+            crate::autotier::CAPABILITY_TABLE_VERSION
+        );
+        assert_eq!(
+            unknown_doc["cost_model_version"],
+            crate::autotier::COST_MODEL_VERSION
+        );
+        assert_eq!(
+            unknown_doc["cache_stats_version"],
+            crate::autotier::CACHE_STATS_VERSION
+        );
 
         let body_5m = json!({
             "model": "claude-sonnet-4-20250514",

@@ -32,6 +32,9 @@ pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
     CLASSIFIER_VERSION, POLICY_VERSION,
 };
+pub use cost::{
+    CACHE_STATS_VERSION, CAPABILITY_TABLE_VERSION, COST_MODEL_VERSION,
+};
 pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
 pub use observer::{build_shadow_row, is_shadow_enabled, shadow_config_for_observe, ShadowInput};

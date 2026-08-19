@@ -23,7 +23,7 @@ use crate::error::AppError;
 
 use super::cost::{
     evaluate_costs, parse_cost_assumptions, price_leg_is_frozen, push_assumption,
-    serialize_cost_assumptions, ttl_from_assumptions, PriceLeg, TokenCounts,
+    serialize_cost_assumptions, stamp_model_versions, ttl_from_assumptions, PriceLeg, TokenCounts,
     ASSUMPTION_PRICE_FROZEN, ASSUMPTION_PRICE_MISSING, ASSUMPTION_WRITE_PRICE_COMBINED,
 };
 use super::SessionIdHash;
@@ -366,6 +366,7 @@ fn enrich_usage_costs(
     };
 
     let mut doc = parse_cost_assumptions(&row.cost_assumptions_json);
+    stamp_model_versions(&mut doc);
 
     if !price_leg_is_frozen(doc.baseline.as_ref()) {
         let model = event
