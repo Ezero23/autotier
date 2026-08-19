@@ -13,11 +13,11 @@
 
 use serde_json::Value;
 
-use super::features::{CountBucket, RoutingFeatures, TokenBucket};
+use super::features::{CountBucket, ExtractionStatus, RoutingFeatures, TokenBucket};
 use super::{AgentType, SessionIdHash};
 
 /// 当前特征提取器版本。任何提取逻辑变更必须 bump。
-pub const FEATURE_VERSION: &str = "claude-extractor-v0.1";
+pub const FEATURE_VERSION: &str = "claude-extractor-v0.2";
 
 /// 上下文 token 估算除数（约 4 字符 ≈ 1 token 的经验值）。
 const CHARS_PER_TOKEN: u32 = 4;
@@ -32,9 +32,8 @@ const CHARS_PER_TOKEN: u32 = 4;
 /// * `app_type` — 调用方应用类型。
 /// * `session_hash` — 已由调用方哈希过的 Session ID（本函数不做哈希，也不见原文）。
 ///
-/// 请求体无法解析出 messages 时，返回基于零值的最小特征集（`original_model`
-/// 仍取自 body.model，缺失则为空串）——提取失败不抛错，由 Decision Engine
-/// 通过 `unsafe_reasons` 表达风险。
+/// 请求体 `messages` 字段缺失或类型错误时，`extraction_status` 标记为
+/// `Unparseable`，Decision Engine 据此不推荐任何 Slot。
 pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -> RoutingFeatures {
     let model = body
         .get("model")
@@ -42,11 +41,12 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
         .unwrap_or("")
         .to_string();
 
-    let messages = body
-        .get("messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    // 检查 messages 字段是否存在且为数组；缺失或类型错误 → Unparseable。
+    let messages_raw = body.get("messages");
+    let (messages, extraction_status) = match messages_raw {
+        Some(Value::Array(arr)) => (arr.clone(), ExtractionStatus::Success),
+        _ => (Vec::new(), ExtractionStatus::Unparseable),
+    };
 
     let mut user_weighted_len: u32 = 0;
     let mut user_turns: u32 = 0;
@@ -81,6 +81,14 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
                         file_path_count += count_file_paths(text);
                     }
                 }
+                "tool_use" => {
+                    // tool_use 的主要载荷在 input 字段，不计入用户消息特征。
+                    let input_len = block
+                        .get("input")
+                        .map(|v| v.to_string().len() as u64)
+                        .unwrap_or(0);
+                    total_chars += input_len;
+                }
                 "tool_result" => {
                     tool_results += 1;
                     if block
@@ -90,8 +98,17 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
                     {
                         has_error_tool_result = true;
                     }
-                    // tool_result 内容只计入上下文体量，不计入用户消息特征
+                    // tool_result 内容计入上下文体量
                     total_chars += content_text_len(block.get("content"));
+                    // 检查 tool_result 内嵌的 image/document block
+                    if let Some(arr) = block.get("content").and_then(Value::as_array) {
+                        for inner in arr {
+                            let inner_type = inner.get("type").and_then(Value::as_str).unwrap_or("");
+                            if inner_type == "image" || inner_type == "document" {
+                                has_image_or_file = true;
+                            }
+                        }
+                    }
                 }
                 "image" | "document" => {
                     has_image_or_file = true;
@@ -164,6 +181,7 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
         recent_complexity_window: Vec::new(), // 由 Decision Engine 经 Session State 注入
         session_id_hash: SessionIdHash(session_hash.to_string()),
         feature_version: FEATURE_VERSION.to_string(),
+        extraction_status,
     }
 }
 
@@ -472,6 +490,73 @@ mod tests {
     }
 
     // --- 性能：p95 < 1ms（PRD Phase 3 Exit Gate） ---
+
+    #[test]
+    fn missing_messages_is_unparseable() {
+        let f = extract(json!({ "model": "claude-sonnet-4-20250514" }));
+        assert_eq!(f.extraction_status, ExtractionStatus::Unparseable);
+    }
+
+    #[test]
+    fn malformed_messages_is_unparseable() {
+        let f = extract(json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": "not an array"
+        }));
+        assert_eq!(f.extraction_status, ExtractionStatus::Unparseable);
+    }
+
+    #[test]
+    fn empty_messages_is_success() {
+        let f = extract(json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": []
+        }));
+        assert_eq!(f.extraction_status, ExtractionStatus::Success);
+    }
+
+    #[test]
+    fn tool_use_input_counts_toward_context() {
+        let f = extract(json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "edit_file",
+                    "input": {
+                        "path": "src/main.rs",
+                        "content": "a".repeat(4000)
+                    }
+                }]
+            }]
+        }));
+        assert!(
+            matches!(f.context_token_bucket, TokenBucket::Under1k | TokenBucket::Under4k | TokenBucket::Under16k | TokenBucket::Under64k | TokenBucket::Under128k | TokenBucket::Over128k),
+            "tool_use.input 应贡献足够的 token"
+        );
+        assert_ne!(f.context_token_bucket, TokenBucket::Zero, "tool_use.input 应贡献 >0 tokens");
+    }
+
+    #[test]
+    fn tool_result_nested_image_is_detected() {
+        let f = extract(json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": [
+                        { "type": "text", "text": "here is the screenshot" },
+                        { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "..." } }
+                    ]
+                }]
+            }]
+        }));
+        assert!(f.has_image_or_file, "嵌套在 tool_result 里的 image 应被识别");
+    }
 
     #[test]
     fn extraction_p95_under_1ms() {

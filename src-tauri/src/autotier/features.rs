@@ -8,6 +8,23 @@ use serde::{Deserialize, Serialize};
 use super::{AgentType, SessionIdHash};
 
 // ---------------------------------------------------------------------------
+// ExtractionStatus — 请求体解析状态
+// ---------------------------------------------------------------------------
+
+/// 特征提取器对请求体的解析结果。
+///
+/// 解析失败（`Unparseable`）被显式记录，避免与合法空消息混为一谈；
+/// 失败时不推荐任何 Slot。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtractionStatus {
+    #[default]
+    Success,
+    /// 请求体无法安全解析为预期结构。
+    Unparseable,
+}
+
+// ---------------------------------------------------------------------------
 // CountBucket — 消息/轮次计数分桶
 // ---------------------------------------------------------------------------
 
@@ -122,6 +139,8 @@ pub struct RoutingFeatures {
     pub session_id_hash: SessionIdHash,
     /// 特征提取器版本。
     pub feature_version: String,
+    /// 请求体解析状态。
+    pub extraction_status: ExtractionStatus,
 }
 
 impl RoutingFeatures {
@@ -145,10 +164,17 @@ impl RoutingFeatures {
             has_effort_or_thinking: false,
             recent_complexity_window: Vec::new(),
             session_id_hash: SessionIdHash(session_hash.to_string()),
-            feature_version: "v0.1".to_string(),
+            feature_version: "claude-extractor-v0.2".to_string(),
+            extraction_status: ExtractionStatus::default(),
         }
     }
 }
+
+/// 当前特征提取器版本（统一常量入口）。
+///
+/// 注意：此常量硬编码，与 `extractor::FEATURE_VERSION` 保持同步。
+/// 任何提取逻辑变更必须同时 bump 两处。
+pub const FEATURE_VERSION: &str = "claude-extractor-v0.2";
 
 // ===========================================================================
 // 测试
@@ -206,7 +232,8 @@ mod tests {
         assert_eq!(f.message_count_bucket, CountBucket::Zero);
         assert!(!f.has_error_tool_result);
         assert!(f.recent_complexity_window.is_empty());
-        assert_eq!(f.feature_version, "v0.1");
+        assert_eq!(f.feature_version, "claude-extractor-v0.2");
+        assert_eq!(f.extraction_status, ExtractionStatus::Success);
     }
 
     #[test]
@@ -229,7 +256,8 @@ mod tests {
             has_effort_or_thinking: true,
             recent_complexity_window: vec![0.3, 0.5, 0.6],
             session_id_hash: SessionIdHash("hash-xyz".to_string()),
-            feature_version: "v0.1".to_string(),
+            feature_version: "claude-extractor-v0.2".to_string(),
+            extraction_status: ExtractionStatus::Success,
         };
 
         let json = serde_json::to_string(&f).unwrap();

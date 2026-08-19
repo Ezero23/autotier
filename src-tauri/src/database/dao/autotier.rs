@@ -9,6 +9,7 @@
 //! 所有方法通过 `impl Database` 提供，遵循基座 DAO 模式（`lock_conn!` 宏）。
 //! 不修改现有 `proxy_request_logs` 或其他基座表。
 
+use crate::autotier::{CLASSIFIER_VERSION, FEATURE_VERSION, POLICY_VERSION};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use rusqlite::{params, OptionalExtension};
@@ -36,9 +37,9 @@ impl Default for AutotierRoutingConfigDto {
             mode: "shadow".to_string(),
             retention_days: 30,
             raw_prompt_opt_in: false,
-            classifier_version: "shadow-stub-v0.1".to_string(),
-            feature_version: "v0.1".to_string(),
-            policy_version: "shadow-stub-v0.1".to_string(),
+            classifier_version: CLASSIFIER_VERSION.to_string(),
+            feature_version: FEATURE_VERSION.to_string(),
+            policy_version: POLICY_VERSION.to_string(),
             updated_at: 0,
         }
     }
@@ -151,13 +152,15 @@ pub struct AutotierDecisionLabelDto {
 // ---------------------------------------------------------------------------
 
 impl Database {
-    /// 插入或替换一条决策记录（幂等，按 decision_id 主键）。
+    /// 插入一条新的决策记录。
     ///
-    /// PRD §FR-DATA-001：同一 Request ID 幂等写入。
+    /// 同一 `decision_id` 重复调用会静默跳过（`ON CONFLICT DO NOTHING`），
+    /// 避免覆盖已有决策或级联删除用户标注（PRD §FR-DATA-001）。
+    /// 如需在 Finalize 后回填字段，请使用 `autotier_finalize_decision`。
     pub fn autotier_upsert_decision(&self, row: &AutotierDecisionRow) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(
-            "INSERT OR REPLACE INTO autotier_routing_decisions (
+            "INSERT INTO autotier_routing_decisions (
                 decision_id, created_at, completed_at, app_type, session_id_hash, mode,
                 client_requested_model, initial_selected_provider,
                 baseline_outbound_model, baseline_outbound_provider,
@@ -193,7 +196,7 @@ impl Database {
                 ?37,
                 ?38, ?39, ?40, ?41,
                 ?42, ?43
-            )",
+            ) ON CONFLICT(decision_id) DO NOTHING",
             params![
                 row.decision_id,
                 row.created_at,
@@ -270,16 +273,28 @@ pub struct FinalizeDecisionParams<'a> {
 }
 
 impl Database {
-    /// Finalize：回填 usage、实际出站、关联 ID 并标记 complete。
+    /// Finalize：回填 usage、实际出站、关联 ID。
     ///
     /// PRD §11.0：从同一个 RequestContext 取 decision_id 直接 UPDATE，
     /// 不做数据库反查。只更新提供的非 None 字段（COALESCE 保留原值）。
+    ///
+    /// `is_complete` 仅在关键 usage 字段（`usage_request_id` 或 token 计数）
+    /// 非空时设为 true；无 usage 数据时不标记 complete（PRD §11.0）。
+    ///
+    /// 返回 `Err` 当 `decision_id` 不存在（affected_rows == 0），
+    /// 避免调用方误以为已收口。
     pub fn autotier_finalize_decision(
         &self,
         params: &FinalizeDecisionParams<'_>,
     ) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
-        conn.execute(
+
+        // Completion predicate: 至少有 usage_request_id 或 token 计数才认为完整。
+        let has_usage = params.usage_request_id.is_some()
+            || params.actual_input_tokens.is_some()
+            || params.actual_output_tokens.is_some();
+
+        let result = conn.execute(
             "UPDATE autotier_routing_decisions SET
                 completed_at = ?2,
                 actual_outbound_model = COALESCE(?3, actual_outbound_model),
@@ -297,7 +312,7 @@ impl Database {
                 retry_count = COALESCE(?15, retry_count),
                 fallback_count = COALESCE(?16, fallback_count),
                 error_code = COALESCE(?17, error_code),
-                is_complete = 1
+                is_complete = CASE WHEN ?18 = 1 THEN 1 ELSE is_complete END
              WHERE decision_id = ?1",
             params![
                 params.decision_id,
@@ -317,9 +332,18 @@ impl Database {
                 params.retry_count,
                 params.fallback_count,
                 params.error_code,
+                if has_usage { 1 } else { 0 },
             ],
-        )
-        .map_err(|e| AppError::Database(format!("autotier_finalize_decision failed: {e}")))?;
+        );
+        let affected = result.map_err(|e| {
+            AppError::Database(format!("autotier_finalize_decision failed: {e}"))
+        })?;
+        if affected == 0 {
+            return Err(AppError::Database(format!(
+                "autotier_finalize_decision: decision_id '{}' not found",
+                params.decision_id
+            )));
+        }
         Ok(())
     }
 
@@ -899,9 +923,9 @@ mod tests {
             unsafe_reasons_json: "[]".to_string(),
             safe_to_execute: false,
             feature_json: "{}".to_string(),
-            feature_version: "v0.1".to_string(),
-            classifier_version: "shadow-stub-v0.1".to_string(),
-            policy_version: "shadow-stub-v0.1".to_string(),
+            feature_version: "claude-extractor-v0.2".to_string(),
+            classifier_version: "rules-v0.2".to_string(),
+            policy_version: "shadow-policy-v0.2".to_string(),
             actual_input_tokens: None,
             actual_output_tokens: None,
             actual_cache_read_tokens: None,
@@ -946,6 +970,139 @@ mod tests {
         db.autotier_upsert_decision(&row).unwrap();
 
         assert_eq!(db.autotier_count_decisions().unwrap(), 1);
+    }
+
+    #[test]
+    fn upsert_decision_preserves_labels() {
+        let db = test_db();
+        let row = make_decision_row("d-idem-label");
+        db.autotier_upsert_decision(&row).unwrap();
+
+        let label = AutotierDecisionLabelDto {
+            decision_id: "d-idem-label".to_string(),
+            label: "correct".to_string(),
+            reason: None,
+            note: None,
+            created_at: 1_000,
+            updated_at: 1_000,
+        };
+        db.autotier_upsert_label(&label).unwrap();
+        assert_eq!(db.autotier_count_labels().unwrap(), 1);
+
+        // 重复写入同一 decision 不应级联删除 label
+        db.autotier_upsert_decision(&row).unwrap();
+        assert_eq!(db.autotier_count_labels().unwrap(), 1);
+    }
+
+    #[test]
+    fn upsert_decision_does_not_overwrite_finalized() {
+        let db = test_db();
+        let row = make_decision_row("d-idem-final");
+        db.autotier_upsert_decision(&row).unwrap();
+        db.autotier_finalize_decision(&FinalizeDecisionParams {
+            decision_id: "d-idem-final",
+            completed_at: 1_700_000_100,
+            actual_outbound_model: Some("claude-sonnet-4-20250514"),
+            actual_outbound_provider: Some("provider-a"),
+            upstream_message_id: Some("msg-001"),
+            usage_request_id: Some("session:msg-001"),
+            actual_input_tokens: Some(100),
+            actual_output_tokens: Some(50),
+            actual_cache_read_tokens: Some(80),
+            actual_cache_write_5m_tokens: Some(20),
+            actual_cache_write_1h_tokens: Some(0),
+            actual_cost_usd: Some("0.0015"),
+            status_code: Some(200),
+            outcome: Some("success"),
+            retry_count: Some(0),
+            fallback_count: Some(0),
+            error_code: None,
+        })
+        .unwrap();
+
+        // 初始重复写入不应把 finalized 字段覆盖回空
+        db.autotier_upsert_decision(&row).unwrap();
+        let fetched = db.autotier_get_decision("d-idem-final").unwrap().unwrap();
+        assert_eq!(fetched.upstream_message_id, Some("msg-001".to_string()));
+        assert_eq!(fetched.usage_request_id, Some("session:msg-001".to_string()));
+        assert_eq!(fetched.actual_input_tokens, Some(100));
+        assert_eq!(fetched.actual_cost_usd, Some("0.0015".to_string()));
+        assert_eq!(fetched.status_code, Some(200));
+        assert!(fetched.is_complete);
+    }
+
+    #[test]
+    fn finalize_missing_decision_fails() {
+        let db = test_db();
+        let result = db.autotier_finalize_decision(&FinalizeDecisionParams {
+            decision_id: "d-missing",
+            completed_at: 1_700_000_100,
+            ..Default::default()
+        });
+        assert!(result.is_err(), "finalize 不存在的 decision 必须报错");
+    }
+
+    #[test]
+    fn finalize_without_usage_keeps_incomplete() {
+        let db = test_db();
+        let row = make_decision_row("d-no-usage");
+        db.autotier_upsert_decision(&row).unwrap();
+
+        db.autotier_finalize_decision(&FinalizeDecisionParams {
+            decision_id: "d-no-usage",
+            completed_at: 1_700_000_100,
+            actual_outbound_model: Some("claude-sonnet-4-20250514"),
+            actual_outbound_provider: Some("provider-a"),
+            upstream_message_id: Some("msg-001"),
+            usage_request_id: None,
+            actual_input_tokens: None,
+            actual_output_tokens: None,
+            actual_cache_read_tokens: None,
+            actual_cache_write_5m_tokens: None,
+            actual_cache_write_1h_tokens: None,
+            actual_cost_usd: None,
+            status_code: Some(200),
+            outcome: Some("success"),
+            retry_count: Some(0),
+            fallback_count: Some(0),
+            error_code: None,
+        })
+        .unwrap();
+
+        let fetched = db.autotier_get_decision("d-no-usage").unwrap().unwrap();
+        assert!(!fetched.is_complete, "没有 usage_request_id/token 不应标记 complete");
+        assert_eq!(fetched.status_code, Some(200));
+    }
+
+    #[test]
+    fn finalize_with_usage_becomes_complete() {
+        let db = test_db();
+        let row = make_decision_row("d-with-usage");
+        db.autotier_upsert_decision(&row).unwrap();
+
+        db.autotier_finalize_decision(&FinalizeDecisionParams {
+            decision_id: "d-with-usage",
+            completed_at: 1_700_000_100,
+            actual_outbound_model: Some("claude-sonnet-4-20250514"),
+            actual_outbound_provider: Some("provider-a"),
+            upstream_message_id: Some("msg-001"),
+            usage_request_id: Some("session:msg-001"),
+            actual_input_tokens: None,
+            actual_output_tokens: None,
+            actual_cache_read_tokens: None,
+            actual_cache_write_5m_tokens: None,
+            actual_cache_write_1h_tokens: None,
+            actual_cost_usd: None,
+            status_code: Some(200),
+            outcome: Some("success"),
+            retry_count: Some(0),
+            fallback_count: Some(0),
+            error_code: None,
+        })
+        .unwrap();
+
+        let fetched = db.autotier_get_decision("d-with-usage").unwrap().unwrap();
+        assert!(fetched.is_complete, "有 usage_request_id 应标记 complete");
     }
 
     #[test]

@@ -216,10 +216,10 @@ impl DecisionResult {
 }
 
 /// 规则分类器版本。任何权重/阈值/规则变更必须 bump。
-pub const CLASSIFIER_VERSION: &str = "rules-v0.1";
+pub const CLASSIFIER_VERSION: &str = "rules-v0.2";
 
 /// Shadow 策略版本。
-pub const POLICY_VERSION: &str = "shadow-policy-v0.1";
+pub const POLICY_VERSION: &str = "shadow-policy-v0.2";
 
 // ---------------------------------------------------------------------------
 // shadow_decide — 纯函数规则分类器（Phase 3）
@@ -232,11 +232,30 @@ pub const POLICY_VERSION: &str = "shadow-policy-v0.1";
 /// - 不修改输入；`next_state` 以新值返回
 /// - v0.1 Shadow `safe_to_execute` 始终为 false；`unsafe_reasons` 如实记录风险信号
 ///
-/// 评分模型（rules-v0.1）：各信号权重相加后 clamp 到 [0, 1]。
+/// 评分模型（rules-v0.2）：各信号权重相加后 clamp 到 [0, 1]。
 /// 槽位阈值：score < 0.25 → Cheap；< 0.5 → Mid；否则 Strong。
 /// 显式小模型请求直接推荐 Cheap（EXPLICIT_SMALL_MODEL）。
+///
+/// 解析失败（`extraction_status == Unparseable`）：不推荐任何 Slot，
+/// 记录 `RequestBodyUnparseable`，避免把无法解析的请求伪装成 Cheap。
 pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
     let f = &input.features;
+
+    // --- 解析失败短路：不推荐 Slot，不做评分 ---
+    if f.extraction_status == super::features::ExtractionStatus::Unparseable {
+        return DecisionResult {
+            recommended_slot: None,
+            complexity_score: 0.0,
+            confidence: 0.0,
+            reason_codes: vec![ReasonCode::ClassifierError],
+            safe_to_execute: false,
+            unsafe_reasons: vec![UnsafeReason::RequestBodyUnparseable],
+            next_state: input.session_state.clone(),
+            classifier_version: CLASSIFIER_VERSION.to_string(),
+            policy_version: POLICY_VERSION.to_string(),
+        };
+    }
+
     let mut reasons = Vec::new();
     let mut unsafe_reasons = Vec::new();
     let mut score: f32 = 0.0;
@@ -661,10 +680,10 @@ mod tests {
     }
 
     #[test]
-    fn engine_versions_are_rules_v01() {
+    fn engine_versions_are_current() {
         let result = shadow_decide(&make_test_input(), 0);
-        assert_eq!(result.classifier_version, "rules-v0.1");
-        assert_eq!(result.policy_version, "shadow-policy-v0.1");
+        assert_eq!(result.classifier_version, CLASSIFIER_VERSION);
+        assert_eq!(result.policy_version, POLICY_VERSION);
     }
 
     #[test]
@@ -726,11 +745,12 @@ mod tests {
                 has_effort_or_thinking: false,
                 recent_complexity_window: vec![],
                 session_id_hash: super::super::SessionIdHash("h".to_string()),
-                feature_version: "v0.1".to_string(),
+                feature_version: "claude-extractor-v0.2".to_string(),
+                extraction_status: super::super::features::ExtractionStatus::Success,
             },
             session_state: RoutingSessionState::default(),
             mode: RoutingMode::Shadow,
-            feature_version: "v0.1".to_string(),
+            feature_version: "claude-extractor-v0.2".to_string(),
         }
     }
 
@@ -758,7 +778,8 @@ mod tests {
                 has_effort_or_thinking: true,
                 recent_complexity_window: vec![0.3, 0.4, 0.5, 0.7],
                 session_id_hash: super::super::SessionIdHash("h".to_string()),
-                feature_version: "v0.1".to_string(),
+                feature_version: "claude-extractor-v0.2".to_string(),
+                extraction_status: super::super::features::ExtractionStatus::Success,
             },
             session_state: RoutingSessionState {
                 recent_complexity_scores: vec![0.3, 0.4, 0.5, 0.7],
@@ -766,7 +787,7 @@ mod tests {
                 last_recommended_slot: Some(ModelSlot::Strong),
             },
             mode: RoutingMode::Shadow,
-            feature_version: "v0.1".to_string(),
+            feature_version: "claude-extractor-v0.2".to_string(),
         }
     }
 }
