@@ -8,6 +8,7 @@ import {
   ProviderForm,
   type ProviderFormValues,
 } from "@/components/providers/forms/ProviderForm";
+import { AutotierProviderSlotsPanel } from "@/components/autotier/AutotierProviderSlotsPanel";
 import { AuthSettingsPanel } from "@/components/providers/AuthSettingsPanel";
 import {
   openclawApi,
@@ -301,6 +302,9 @@ export function EditProviderDialog({
         showButtons={false}
         isProxyTakeover={isProxyTakeover}
       />
+      {provider.id ? (
+        <AutotierProviderSlotsPanel providerId={provider.id} />
+      ) : null}
       <AuthSettingsPanel
         target={authSettingsTarget}
         onClose={() => setAuthSettingsTarget(null)}
