@@ -1,0 +1,204 @@
+import { invoke } from "@tauri-apps/api/core";
+import { extractErrorMessage } from "@/utils/errorUtils";
+
+/** v0.1 激活的路由模式。其它值不得当作可执行 Live。 */
+export const AUTOTIER_MODES_V01 = ["off", "shadow"] as const;
+export type AutotierModeV01 = (typeof AUTOTIER_MODES_V01)[number];
+
+export const AUTOTIER_SLOTS = [
+  "cheap",
+  "mid",
+  "strong",
+  "long_context",
+  "background",
+] as const;
+export type AutotierSlot = (typeof AUTOTIER_SLOTS)[number];
+export const AUTOTIER_REQUIRED_SLOTS = ["cheap", "mid", "strong"] as const;
+
+export const AUTOTIER_CAPABILITY_STATUSES = [
+  "unknown",
+  "declared",
+  "probed",
+  "verified",
+  "stale",
+  "failed",
+] as const;
+export type AutotierCapabilityStatus =
+  (typeof AUTOTIER_CAPABILITY_STATUSES)[number];
+
+export const AUTOTIER_RETENTION_DAYS = [7, 14, 30, 90] as const;
+export type AutotierRetentionDays = (typeof AUTOTIER_RETENTION_DAYS)[number];
+
+export type AutotierCommandErrorCode =
+  | "illegal_mode"
+  | "illegal_retention"
+  | "illegal_slot"
+  | "illegal_capability"
+  | "missing_provider"
+  | "missing_model"
+  | "unknown";
+
+const SECRET_FIELD = /^(api[_-]?key|authorization|secret|token|password)$/i;
+
+export interface AutotierRoutingConfig {
+  mode: string;
+  retention_days: number;
+  raw_prompt_opt_in: boolean;
+  classifier_version: string;
+  feature_version: string;
+  policy_version: string;
+  capability_table_version: string;
+  cost_model_version: string;
+  cache_stats_version: string;
+  updated_at: number;
+  degraded_from: string | null;
+}
+
+export interface AutotierSaveConfigInput {
+  mode: AutotierModeV01;
+  retention_days: AutotierRetentionDays;
+}
+
+export interface AutotierProviderSlot {
+  provider_id: string;
+  slot: string;
+  model_id: string;
+  capability_status: string;
+  supports_tools: boolean | null;
+  supports_streaming: boolean | null;
+  supports_vision: boolean | null;
+  context_limit: number | null;
+  api_format: string | null;
+  pricing_source: string | null;
+  capability_source: string | null;
+  verified_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AutotierRequiredSlotsStatus {
+  provider_id: string;
+  complete: boolean;
+  present: string[];
+  missing: string[];
+}
+
+export class AutotierApiError extends Error {
+  readonly code: AutotierCommandErrorCode;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "AutotierApiError";
+    this.code = parseAutotierCommandError(message);
+  }
+}
+
+export function parseAutotierCommandError(
+  message: string,
+): AutotierCommandErrorCode {
+  const msg = message.toLowerCase();
+  if (msg.includes("illegal routing mode")) return "illegal_mode";
+  if (msg.includes("retention_days")) return "illegal_retention";
+  if (msg.includes("illegal slot")) return "illegal_slot";
+  if (msg.includes("illegal capability_status")) return "illegal_capability";
+  if (msg.includes("provider_id is required")) return "missing_provider";
+  if (msg.includes("model_id is required")) return "missing_model";
+  return "unknown";
+}
+
+/** 未知 / Live 模式安全显示：永不展示为可执行 Live。 */
+export function displayAutotierMode(mode: string): AutotierModeV01 | "unknown" {
+  if (mode === "off" || mode === "shadow") return mode;
+  return "unknown";
+}
+
+/** 未知 Mode 按方案视为 Off。 */
+export function effectiveAutotierMode(mode: string): AutotierModeV01 {
+  return mode === "shadow" ? "shadow" : "off";
+}
+
+export function displayCapabilityStatus(
+  status: string,
+): AutotierCapabilityStatus {
+  return (AUTOTIER_CAPABILITY_STATUSES as readonly string[]).includes(status)
+    ? (status as AutotierCapabilityStatus)
+    : "unknown";
+}
+
+export function displaySlot(slot: string): AutotierSlot | "unknown" {
+  return (AUTOTIER_SLOTS as readonly string[]).includes(slot)
+    ? (slot as AutotierSlot)
+    : "unknown";
+}
+
+export function omitSecretFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => omitSecretFields(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      if (SECRET_FIELD.test(key)) continue;
+      out[key] = omitSecretFields(nested);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+async function invokeAutotier<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    const raw = await invoke<T>(command, args);
+    return omitSecretFields(raw);
+  } catch (error) {
+    throw new AutotierApiError(extractErrorMessage(error) || String(error));
+  }
+}
+
+export const autotierApi = {
+  getRoutingConfig(): Promise<AutotierRoutingConfig> {
+    return invokeAutotier("autotier_get_routing_config");
+  },
+
+  saveRoutingConfig(
+    input: AutotierSaveConfigInput,
+  ): Promise<AutotierRoutingConfig> {
+    return invokeAutotier("autotier_save_routing_config", { input });
+  },
+
+  listProviderSlots(providerId: string): Promise<AutotierProviderSlot[]> {
+    return invokeAutotier("autotier_list_provider_slots", { providerId });
+  },
+
+  upsertProviderSlot(
+    slot: AutotierProviderSlot,
+  ): Promise<AutotierProviderSlot> {
+    return invokeAutotier("autotier_upsert_provider_slot", { slot });
+  },
+
+  deleteProviderSlot(providerId: string, slot: string): Promise<number> {
+    return invokeAutotier("autotier_delete_provider_slot", {
+      providerId,
+      slot,
+    });
+  },
+
+  requiredSlotsStatus(
+    providerId: string,
+  ): Promise<AutotierRequiredSlotsStatus> {
+    return invokeAutotier("autotier_required_slots_status", { providerId });
+  },
+
+  clearDecisions(): Promise<void> {
+    return invokeAutotier("autotier_clear_decisions");
+  },
+
+  pruneDecisions(retentionDays?: AutotierRetentionDays): Promise<number> {
+    return invokeAutotier("autotier_prune_decisions", { retentionDays });
+  },
+};
