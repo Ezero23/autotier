@@ -209,6 +209,46 @@ pub fn enqueue_finalize(db: Arc<Database>, event: FinalizeEvent) -> bool {
     writer_for(db).try_enqueue(DecisionEvent::Finalize(event))
 }
 
+/// Phase 5A：按 `decision_id` 回填 Usage Logger 的最终 ID 与 token。
+///
+/// 无 `message_id` 且无计费 token 时不写（合法无 Usage，保持 `is_complete=false`）。
+/// 不反查 `proxy_request_logs`。
+pub fn enqueue_usage_finalize(
+    db: Arc<Database>,
+    decision_id: String,
+    upstream_message_id: Option<String>,
+    usage_request_id: String,
+    input_tokens: i64,
+    output_tokens: i64,
+    cache_read_tokens: i64,
+    cache_creation_tokens: i64,
+    status_code: i64,
+) -> bool {
+    let eligible = upstream_message_id.is_some()
+        || input_tokens > 0
+        || output_tokens > 0
+        || cache_read_tokens > 0
+        || cache_creation_tokens > 0;
+    if !eligible {
+        return false;
+    }
+    enqueue_finalize(
+        db,
+        FinalizeEvent {
+            decision_id,
+            completed_at: chrono::Utc::now().timestamp_millis(),
+            upstream_message_id,
+            usage_request_id: Some(usage_request_id),
+            actual_input_tokens: Some(input_tokens),
+            actual_output_tokens: Some(output_tokens),
+            actual_cache_read_tokens: Some(cache_read_tokens),
+            actual_cache_write_5m_tokens: Some(cache_creation_tokens),
+            status_code: Some(status_code),
+            ..Default::default()
+        },
+    )
+}
+
 async fn consumer_loop(
     db: Arc<Database>,
     mut rx: mpsc::Receiver<DecisionEvent>,
@@ -439,6 +479,51 @@ mod tests {
         let row = db.autotier_get_decision("d-0000").unwrap().unwrap();
         assert_eq!(row.usage_request_id.as_deref(), Some("usage-1"));
         assert!(!row.session_id_hash.contains("sess-xyz"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn usage_finalize_sets_complete_without_looking_up_logs() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+        let row = sample_row("d-usage", &SCOPE_A);
+        assert!(enqueue_create(db.clone(), row));
+        assert!(enqueue_usage_finalize(
+            db.clone(),
+            "d-usage".into(),
+            Some("msg_abc".into()),
+            "session:msg_abc".into(),
+            10,
+            5,
+            0,
+            0,
+            200,
+        ));
+        assert!(writer_for(db.clone()).flush(Duration::from_secs(5)).await);
+        let got = db.autotier_get_decision("d-usage").unwrap().unwrap();
+        assert_eq!(got.upstream_message_id.as_deref(), Some("msg_abc"));
+        assert_eq!(got.usage_request_id.as_deref(), Some("session:msg_abc"));
+        assert_eq!(got.actual_input_tokens, Some(10));
+        assert_eq!(got.actual_output_tokens, Some(5));
+        assert!(got.is_complete);
+    }
+
+    #[test]
+    fn usage_finalize_skips_ineligible_empty_usage() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+        assert!(!enqueue_usage_finalize(
+            db,
+            "d-skip".into(),
+            None,
+            "uuid-fallback".into(),
+            0,
+            0,
+            0,
+            0,
+            500,
+        ));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
