@@ -186,35 +186,7 @@ async fn handle_messages_for_app(
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
 
-    // AutoTier Shadow Observe（Phase 4）：仅提取特征+生成决策记录，不改请求/不阻塞转发。
-    // 配置或 Secret 读取失败时跳过；Create 入有界 Writer 队列，失败只计数。
-    {
-        if let Some(autotier_config) =
-            crate::autotier::shadow_config_for_observe(state.db.autotier_get_config())
-        {
-            match crate::autotier::load_or_create_session_secret() {
-                Ok(secret) => {
-                    let decision_id = uuid::Uuid::new_v4().to_string();
-                    let (row, _) = crate::autotier::build_shadow_row(
-                        &crate::autotier::ShadowInput {
-                            decision_id,
-                            app_type: ctx.app_type.clone(),
-                            session_id: ctx.session_id.clone(),
-                            request_model: ctx.request_model.clone(),
-                            provider_id: ctx.provider.id.clone(),
-                        },
-                        &body,
-                        &autotier_config,
-                        &secret,
-                    );
-                    crate::autotier::enqueue_create(state.db.clone(), row);
-                }
-                Err(e) => {
-                    log::warn!("[AutoTier] session secret unavailable, skip shadow: {e}");
-                }
-            }
-        }
-    }
+    maybe_observe_autotier_shadow(&state, &mut ctx, &body);
 
     let raw_endpoint = uri
         .path_and_query()
@@ -249,6 +221,7 @@ async fn handle_messages_for_app(
                 ctx.provider = provider;
             }
             log_forward_error(&state, &ctx, is_stream, &err.error);
+            enqueue_autotier_finalize_error(&state, &ctx, &err.error);
             return Err(err.error);
         }
     };
@@ -256,6 +229,7 @@ async fn handle_messages_for_app(
     let connection_guard = result.connection_guard.take();
     ctx.outbound_model = result.outbound_model.take();
     ctx.provider = result.provider;
+    enqueue_autotier_finalize_success(&state, &ctx, result.response.status().as_u16());
     let api_format = result
         .claude_api_format
         .as_deref()
@@ -295,6 +269,103 @@ async fn handle_messages_for_app(
         connection_guard,
     )
     .await
+}
+
+/// Phase 4C：Shadow 入口生成 `decision_id` 并挂到 `RequestContext`，只读 Create。
+/// Off / 配置失败 / Secret 失败全部旁路，不改请求、不阻塞转发。
+fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, body: &Value) {
+    let Some(autotier_config) =
+        crate::autotier::shadow_config_for_observe(state.db.autotier_get_config())
+    else {
+        return;
+    };
+    let secret = match crate::autotier::load_or_create_session_secret() {
+        Ok(secret) => secret,
+        Err(e) => {
+            log::warn!("[AutoTier] session secret unavailable, skip shadow: {e}");
+            return;
+        }
+    };
+    let decision_id = uuid::Uuid::new_v4().to_string();
+    let initial_selected_provider = ctx.provider.id.clone();
+    let (row, _) = crate::autotier::build_shadow_row(
+        &crate::autotier::ShadowInput {
+            decision_id: decision_id.clone(),
+            app_type: ctx.app_type.clone(),
+            session_id: ctx.session_id.clone(),
+            request_model: ctx.request_model.clone(),
+            provider_id: initial_selected_provider.clone(),
+        },
+        body,
+        &autotier_config,
+        &secret,
+    );
+    crate::autotier::enqueue_create(state.db.clone(), row);
+    ctx.autotier = Some(super::handler_context::AutotierRequestState {
+        decision_id,
+        initial_selected_provider,
+    });
+}
+
+fn enqueue_autotier_finalize_success(state: &ProxyState, ctx: &RequestContext, status_code: u16) {
+    enqueue_autotier_finalize(state, ctx, Some(status_code as i64), "success", None);
+}
+
+fn enqueue_autotier_finalize_error(state: &ProxyState, ctx: &RequestContext, error: &ProxyError) {
+    enqueue_autotier_finalize(
+        state,
+        ctx,
+        Some(map_proxy_error_to_status(error) as i64),
+        "error",
+        Some(autotier_error_code(error)),
+    );
+}
+
+/// Forwarder 完成后捕获真实 Baseline/Actual（Shadow 两者相同，证明未改写）。
+fn enqueue_autotier_finalize(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: Option<i64>,
+    outcome: &str,
+    error_code: Option<String>,
+) {
+    let Some(autotier) = ctx.autotier.as_ref() else {
+        return;
+    };
+    let outbound_model = ctx.outbound_model.clone();
+    let outbound_provider = Some(ctx.provider.id.clone());
+    let fallback_count = if ctx.provider.id != autotier.initial_selected_provider {
+        Some(1)
+    } else {
+        Some(0)
+    };
+    crate::autotier::enqueue_finalize(
+        state.db.clone(),
+        crate::autotier::FinalizeEvent {
+            decision_id: autotier.decision_id.clone(),
+            completed_at: chrono::Utc::now().timestamp_millis(),
+            baseline_outbound_model: outbound_model.clone(),
+            baseline_outbound_provider: outbound_provider.clone(),
+            actual_outbound_model: outbound_model,
+            actual_outbound_provider: outbound_provider,
+            status_code,
+            outcome: Some(outcome.to_string()),
+            fallback_count,
+            error_code,
+            ..Default::default()
+        },
+    );
+}
+
+fn autotier_error_code(error: &ProxyError) -> String {
+    match error {
+        ProxyError::UpstreamError { status, .. } => format!("upstream_{status}"),
+        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "timeout".into(),
+        ProxyError::ForwardFailed(_) => "forward_failed".into(),
+        ProxyError::MaxRetriesExceeded => "max_retries_exceeded".into(),
+        ProxyError::NoAvailableProvider => "no_available_provider".into(),
+        _ => "error".into(),
+    }
 }
 
 fn validate_claude_desktop_gateway_auth(

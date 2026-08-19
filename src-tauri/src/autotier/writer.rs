@@ -18,7 +18,7 @@ use sha2::Sha256;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::config::get_app_config_dir;
-use crate::database::{AutotierDecisionRow, Database, FinalizeDecisionParams};
+use crate::database::{lock_conn, AutotierDecisionRow, Database, FinalizeDecisionParams};
 use crate::error::AppError;
 
 use super::SessionIdHash;
@@ -30,16 +30,14 @@ pub const DECISION_QUEUE_CAP: usize = 4096;
 
 /// HMAC-SHA-256 hex（小写）。Secret 不得写入日志。
 pub fn hash_session_id(session_id: &str, secret: &[u8]) -> SessionIdHash {
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .expect("HMAC-SHA-256 accepts a 32-byte install secret");
+    let mut mac =
+        HmacSha256::new_from_slice(secret).expect("HMAC-SHA-256 accepts a 32-byte install secret");
     mac.update(session_id.as_bytes());
     SessionIdHash(hex_encode(&mac.finalize().into_bytes()))
 }
 
 pub fn session_secret_path() -> PathBuf {
-    get_app_config_dir()
-        .join("autotier")
-        .join("session.secret")
+    get_app_config_dir().join("autotier").join("session.secret")
 }
 
 /// 读取或创建安装级 32 字节 Secret。不把 Secret 写入日志。
@@ -95,10 +93,16 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 /// Finalize 入队载荷（拥有所有权，供跨 await 传递）。
+///
+/// Phase 4C：Forwarder 完成后回填 Baseline/Actual。DAO Finalize 目前只
+/// COALESCE 更新 `actual_outbound_*`，Baseline 由 Writer 同事务外补写
+///（`None` 不覆盖 Create 时的空值以外的已有值）。
 #[derive(Debug, Clone, Default)]
 pub struct FinalizeEvent {
     pub decision_id: String,
     pub completed_at: i64,
+    pub baseline_outbound_model: Option<String>,
+    pub baseline_outbound_provider: Option<String>,
     pub actual_outbound_model: Option<String>,
     pub actual_outbound_provider: Option<String>,
     pub upstream_message_id: Option<String>,
@@ -200,6 +204,10 @@ pub fn enqueue_create(db: Arc<Database>, row: AutotierDecisionRow) -> bool {
     writer_for(db).try_enqueue(DecisionEvent::Create(row))
 }
 
+pub fn enqueue_finalize(db: Arc<Database>, event: FinalizeEvent) -> bool {
+    writer_for(db).try_enqueue(DecisionEvent::Finalize(event))
+}
+
 async fn consumer_loop(
     db: Arc<Database>,
     mut rx: mpsc::Receiver<DecisionEvent>,
@@ -279,7 +287,29 @@ fn apply_finalize(db: &Database, event: &FinalizeEvent) -> Result<(), AppError> 
         fallback_count: event.fallback_count,
         error_code: event.error_code.as_deref(),
     };
-    db.autotier_finalize_decision(&params)
+    db.autotier_finalize_decision(&params)?;
+    fill_baseline_outbound(db, event)
+}
+
+/// DAO Finalize 不更新 Baseline；Shadow 下 Baseline == Actual，须在 Forwarder 后回填。
+fn fill_baseline_outbound(db: &Database, event: &FinalizeEvent) -> Result<(), AppError> {
+    if event.baseline_outbound_model.is_none() && event.baseline_outbound_provider.is_none() {
+        return Ok(());
+    }
+    let conn = lock_conn!(db.conn);
+    conn.execute(
+        "UPDATE autotier_routing_decisions SET
+            baseline_outbound_model = COALESCE(?2, baseline_outbound_model),
+            baseline_outbound_provider = COALESCE(?3, baseline_outbound_provider)
+         WHERE decision_id = ?1",
+        rusqlite::params![
+            event.decision_id,
+            event.baseline_outbound_model.as_deref(),
+            event.baseline_outbound_provider.as_deref(),
+        ],
+    )
+    .map_err(|e| AppError::Database(format!("baseline outbound update failed: {e}")))?;
+    Ok(())
 }
 
 fn is_missing_decision(err: &AppError) -> bool {
@@ -289,9 +319,9 @@ fn is_missing_decision(err: &AppError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_config::AppType;
     use crate::autotier::{build_shadow_row, ShadowInput};
     use crate::database::AutotierRoutingConfigDto;
-    use crate::app_config::AppType;
     use serde_json::json;
     use sha2::Digest;
 
@@ -337,7 +367,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(session_secret_path()).unwrap().permissions().mode();
+            let mode = fs::metadata(session_secret_path())
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
     }
@@ -354,7 +387,8 @@ mod tests {
             "model": "claude-sonnet-4-20250514",
             "messages": [{"role": "user", "content": "hi"}]
         });
-        let (row, _) = build_shadow_row(&input, &body, &AutotierRoutingConfigDto::default(), secret);
+        let (row, _) =
+            build_shadow_row(&input, &body, &AutotierRoutingConfigDto::default(), secret);
         row
     }
 
@@ -404,5 +438,39 @@ mod tests {
         let row = db.autotier_get_decision("d-0000").unwrap().unwrap();
         assert_eq!(row.usage_request_id.as_deref(), Some("usage-1"));
         assert!(!row.session_id_hash.contains("sess-xyz"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn finalize_fills_baseline_and_actual_outbound() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+        let writer = DecisionWriter::spawn(db.clone(), DECISION_QUEUE_CAP);
+        let row = sample_row("d-out", &SCOPE_A);
+        assert!(writer.try_enqueue(DecisionEvent::Create(row)));
+        assert!(writer.try_enqueue(DecisionEvent::Finalize(FinalizeEvent {
+            decision_id: "d-out".into(),
+            completed_at: 2,
+            baseline_outbound_model: Some("claude-sonnet-4-20250514".into()),
+            baseline_outbound_provider: Some("p-real".into()),
+            actual_outbound_model: Some("claude-sonnet-4-20250514".into()),
+            actual_outbound_provider: Some("p-real".into()),
+            status_code: Some(200),
+            outcome: Some("success".into()),
+            ..Default::default()
+        })));
+        assert!(writer.flush(Duration::from_secs(5)).await);
+        let got = db.autotier_get_decision("d-out").unwrap().unwrap();
+        assert_eq!(
+            got.baseline_outbound_model.as_deref(),
+            Some("claude-sonnet-4-20250514")
+        );
+        assert_eq!(got.actual_outbound_model, got.baseline_outbound_model);
+        assert_eq!(got.baseline_outbound_provider.as_deref(), Some("p-real"));
+        assert_eq!(got.actual_outbound_provider, got.baseline_outbound_provider);
+        assert_eq!(got.status_code, Some(200));
+        assert_eq!(got.outcome.as_deref(), Some("success"));
+        assert!(got.completed_at.is_some());
+        assert!(!got.is_complete);
     }
 }
