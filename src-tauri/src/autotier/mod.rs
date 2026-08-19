@@ -23,10 +23,13 @@
 
 mod features;
 mod decision;
+mod extractor;
 
 pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
+    CLASSIFIER_VERSION, POLICY_VERSION,
 };
+pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
 
 use crate::app_config::AppType;

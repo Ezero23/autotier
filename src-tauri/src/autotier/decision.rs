@@ -209,113 +209,174 @@ impl DecisionResult {
             safe_to_execute: false,
             unsafe_reasons: vec![UnsafeReason::CapabilityUnknown],
             next_state: input.session_state.clone(),
-            classifier_version: SHADOW_CLASSIFIER_VERSION.to_string(),
-            policy_version: SHADOW_POLICY_VERSION.to_string(),
+            classifier_version: CLASSIFIER_VERSION.to_string(),
+            policy_version: POLICY_VERSION.to_string(),
         }
     }
 }
 
-/// Shadow stub 分类器版本。
-pub const SHADOW_CLASSIFIER_VERSION: &str = "shadow-stub-v0.1";
+/// 规则分类器版本。任何权重/阈值/规则变更必须 bump。
+pub const CLASSIFIER_VERSION: &str = "rules-v0.1";
 
-/// Shadow stub 策略版本。
-pub const SHADOW_POLICY_VERSION: &str = "shadow-stub-v0.1";
+/// Shadow 策略版本。
+pub const POLICY_VERSION: &str = "shadow-policy-v0.1";
 
 // ---------------------------------------------------------------------------
-// shadow_decide — 纯函数 stub（Phase 3 将替换为真实分类器）
+// shadow_decide — 纯函数规则分类器（Phase 3）
 // ---------------------------------------------------------------------------
 
-/// Shadow 决策 stub：纯函数，确定性，Clock 通过参数注入。
+/// Shadow 决策：纯函数规则分类器。
 ///
-/// Phase 3 将替换为真实分类器；此 stub 演示类型契约和确定性约束：
-/// - 相同版本 + 相同输入 = 相同输出
-/// - v0.1 Shadow `safe_to_execute` 始终为 false
-/// - `next_state` 不修改输入 `session_state`
+/// 约束（PRD §12.3 / §12.5）：
+/// - 相同版本 + 相同输入 = 相同输出；不使用 `_clock_ms`（保留给未来时间衰减）
+/// - 不修改输入；`next_state` 以新值返回
+/// - v0.1 Shadow `safe_to_execute` 始终为 false；`unsafe_reasons` 如实记录风险信号
 ///
-/// # Arguments
-/// * `input` - 决策输入（不可变引用）
-/// * `_clock_ms` - 时钟参数（Unix 毫秒），Phase 3 用于时间衰减/冷却逻辑
+/// 评分模型（rules-v0.1）：各信号权重相加后 clamp 到 [0, 1]。
+/// 槽位阈值：score < 0.25 → Cheap；< 0.5 → Mid；否则 Strong。
+/// 显式小模型请求直接推荐 Cheap（EXPLICIT_SMALL_MODEL）。
 pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
     let f = &input.features;
     let mut reasons = Vec::new();
+    let mut unsafe_reasons = Vec::new();
     let mut score: f32 = 0.0;
 
-    // --- 简单信号 → 复杂度评分 ---
+    // --- 用户消息规模 ---
     if f.user_message_weighted_length < 50 {
         reasons.push(ReasonCode::ShortUserRequest);
-    } else {
-        score += 0.15;
+        score -= 0.1;
+    } else if f.user_message_weighted_length > 500 {
+        score += 0.1;
     }
 
+    // --- 约束密度 ---
     if f.constraint_count <= 1 {
         reasons.push(ReasonCode::LowConstraintCount);
     } else if f.constraint_count >= 5 {
         reasons.push(ReasonCode::HighConstraintCount);
-        score += 0.2;
+        score += 0.15;
     }
 
+    // --- Tool Loop ---
     if f.tool_result_count == 0 && f.tool_definition_count == 0 {
         reasons.push(ReasonCode::NoActiveToolLoop);
+    } else if f.tool_result_count > 0 {
+        // 活跃 Tool Loop：已进入多轮工具交互，复杂度上移
+        score += 0.1;
     }
 
     if f.has_error_tool_result {
         reasons.push(ReasonCode::ToolErrorPresent);
-        score += 0.3;
+        unsafe_reasons.push(UnsafeReason::ToolErrorPresent);
+        score += 0.25;
     }
 
+    // --- 代码结构 ---
     if f.code_structure_score > 0.6 {
         reasons.push(ReasonCode::ArchitectureSignal);
-        score += 0.2;
+        score += 0.15;
+    } else if f.code_structure_score >= 0.3 {
+        reasons.push(ReasonCode::MultiFileSignal);
+        score += 0.05;
     }
 
+    // --- 多模态 ---
     if f.has_image_or_file {
         reasons.push(ReasonCode::MultimodalInput);
         score += 0.1;
     }
 
-    if matches!(
-        f.context_token_bucket,
-        super::features::TokenBucket::Under128k | super::features::TokenBucket::Over128k
-    ) {
-        reasons.push(ReasonCode::LongContext);
-        score += 0.15;
+    // --- 上下文规模 ---
+    match f.context_token_bucket {
+        super::features::TokenBucket::Over128k => {
+            reasons.push(ReasonCode::LongContext);
+            unsafe_reasons.push(UnsafeReason::LongContextExceeded);
+            score += 0.2;
+        }
+        super::features::TokenBucket::Under128k | super::features::TokenBucket::Under64k => {
+            reasons.push(ReasonCode::LongContext);
+            score += 0.15;
+        }
+        _ => {}
     }
 
+    // --- 推理标记 ---
+    if f.has_effort_or_thinking {
+        reasons.push(ReasonCode::ReasoningSignal);
+        score += 0.1;
+    }
+
+    // --- 会话趋势 ---
     if input.session_state.is_complexity_rising() {
         reasons.push(ReasonCode::RecentComplexityRising);
         score += 0.1;
     }
 
+    // --- 缓存保护（不改分，只记录） ---
     if f.cache_read_tokens > 0 || f.cache_write_tokens > 0 {
         reasons.push(ReasonCode::CacheProtection);
     }
 
-    // --- 推荐槽位（stub 规则） ---
-    let recommended = if score < 0.2 {
+    let score = score.clamp(0.0, 1.0);
+
+    // --- 推荐槽位 ---
+    let explicit_small = is_explicit_small_model(&input.client_requested_model);
+    if explicit_small {
+        reasons.push(ReasonCode::ExplicitSmallModel);
+    }
+    let recommended = if explicit_small || score < 0.25 {
         Some(ModelSlot::Cheap)
-    } else if score < 0.4 {
+    } else if score < 0.5 {
         Some(ModelSlot::Mid)
     } else {
         Some(ModelSlot::Strong)
     };
 
-    // --- next_state: 纯函数，不修改输入 ---
-    let next_state = input
-        .session_state
-        .with_complexity_score(score, 10);
+    // v0.1：能力未接入验证体系，任何候选都携带 CapabilityUnknown
+    unsafe_reasons.push(UnsafeReason::CapabilityUnknown);
+
+    // --- 置信度：信号数越多、离阈值越远，置信度越高 ---
+    let signal_count = reasons.len() as f32;
+    let margin = threshold_margin(score).abs();
+    let confidence = (0.4 + signal_count * 0.05 + margin).clamp(0.0, 1.0);
+
+    // --- next_state：纯函数，不修改输入 ---
+    let next_state = RoutingSessionState {
+        last_recommended_slot: recommended,
+        ..input.session_state.with_complexity_score(score, 10)
+    };
 
     DecisionResult {
         recommended_slot: recommended,
         complexity_score: score,
-        confidence: 0.5, // stub: 固定置信度
+        confidence,
         reason_codes: reasons,
-        // v0.1 Shadow: 始终 false（PRD §12.5）
+        // v0.1 Shadow：始终 false（PRD §12.5）
         safe_to_execute: false,
-        unsafe_reasons: vec![],
+        unsafe_reasons,
         next_state,
-        classifier_version: SHADOW_CLASSIFIER_VERSION.to_string(),
-        policy_version: SHADOW_POLICY_VERSION.to_string(),
+        classifier_version: CLASSIFIER_VERSION.to_string(),
+        policy_version: POLICY_VERSION.to_string(),
     }
+}
+
+/// 客户端显式请求小模型别名（haiku/mini/flash/lite 等）的粗判定。
+/// 仅作信号之一，不作为能力判断的唯一来源（PRD NFR 能力不依赖名称猜测）。
+fn is_explicit_small_model(model: &str) -> bool {
+    let m = model.to_lowercase();
+    ["haiku", "mini", "flash", "lite", "small", "turbo"]
+        .iter()
+        .any(|k| m.contains(k))
+}
+
+/// 当前分数到最近槽位阈值（0.25 / 0.5）的有符号距离。
+fn threshold_margin(score: f32) -> f32 {
+    const THRESHOLDS: [f32; 2] = [0.25, 0.5];
+    THRESHOLDS
+        .iter()
+        .map(|t| score - t)
+        .min_by(|a, b| a.abs().partial_cmp(&b.abs()).unwrap())
+        .unwrap_or(0.0)
 }
 
 // ===========================================================================
@@ -524,6 +585,102 @@ mod tests {
         assert!(!result.safe_to_execute);
         assert_eq!(result.complexity_score, 0.0);
         assert!(result.recommended_slot.is_none());
+    }
+
+    // --- Phase 3: 真实规则引擎 ---
+
+    #[test]
+    fn explicit_small_model_forces_cheap() {
+        // Forced Candidate Slot：客户端显式小模型 → Cheap + EXPLICIT_SMALL_MODEL
+        let mut input = make_complex_input(); // 复杂特征也应被显式选择覆盖
+        input.client_requested_model = "claude-haiku-4-5-20251001".to_string();
+        let result = shadow_decide(&input, 0);
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Cheap));
+        assert!(result.reason_codes.contains(&ReasonCode::ExplicitSmallModel));
+    }
+
+    #[test]
+    fn unknown_capability_always_flagged_in_v01() {
+        // Unknown Capability：v0.1 无能力验证体系，任何结果都带 CAPABILITY_UNKNOWN
+        let result = shadow_decide(&make_simple_input(), 0);
+        assert!(result.unsafe_reasons.contains(&UnsafeReason::CapabilityUnknown));
+        assert!(!result.safe_to_execute);
+    }
+
+    #[test]
+    fn tool_error_marks_unsafe() {
+        let mut input = make_test_input();
+        input.features.has_error_tool_result = true;
+        input.features.tool_result_count = 1;
+        let result = shadow_decide(&input, 0);
+        assert!(result.reason_codes.contains(&ReasonCode::ToolErrorPresent));
+        assert!(result.unsafe_reasons.contains(&UnsafeReason::ToolErrorPresent));
+    }
+
+    #[test]
+    fn over_128k_context_marks_long_context_exceeded() {
+        let mut input = make_test_input();
+        input.features.context_token_bucket = TokenBucket::Over128k;
+        let result = shadow_decide(&input, 0);
+        assert!(result.reason_codes.contains(&ReasonCode::LongContext));
+        assert!(result
+            .unsafe_reasons
+            .contains(&UnsafeReason::LongContextExceeded));
+    }
+
+    #[test]
+    fn mid_score_recommends_mid() {
+        let mut input = make_test_input();
+        // 0.1(len>500 不设) 凑 0.3：tool loop +0.1, thinking +0.1, 多文件 +0.05... 用确定组合
+        input.features.tool_result_count = 2; // +0.1
+        input.features.has_effort_or_thinking = true; // +0.1
+        input.features.code_structure_score = 0.5; // +0.05
+        input.features.user_message_weighted_length = 600; // +0.1
+        let result = shadow_decide(&input, 0);
+        assert!((result.complexity_score - 0.35).abs() < 1e-6);
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Mid));
+    }
+
+    #[test]
+    fn confidence_within_bounds() {
+        for input in [make_simple_input(), make_test_input(), make_complex_input()] {
+            let result = shadow_decide(&input, 0);
+            assert!((0.0..=1.0).contains(&result.confidence));
+            assert!((0.0..=1.0).contains(&result.complexity_score));
+        }
+    }
+
+    #[test]
+    fn next_state_records_recommended_slot() {
+        let result = shadow_decide(&make_simple_input(), 0);
+        assert_eq!(
+            result.next_state.last_recommended_slot,
+            Some(ModelSlot::Cheap)
+        );
+        assert_eq!(result.next_state.session_request_count, 1);
+    }
+
+    #[test]
+    fn engine_versions_are_rules_v01() {
+        let result = shadow_decide(&make_test_input(), 0);
+        assert_eq!(result.classifier_version, "rules-v0.1");
+        assert_eq!(result.policy_version, "shadow-policy-v0.1");
+    }
+
+    #[test]
+    fn decide_p95_under_1ms() {
+        let input = make_complex_input();
+        const RUNS: usize = 200;
+        let mut times = Vec::with_capacity(RUNS);
+        for _ in 0..RUNS {
+            let start = std::time::Instant::now();
+            let r = shadow_decide(&input, 0);
+            times.push(start.elapsed());
+            std::hint::black_box(r);
+        }
+        times.sort();
+        let p95 = times[RUNS * 95 / 100];
+        assert!(p95.as_micros() < 1000, "p95 decide latency {p95:?} exceeds 1ms");
     }
 
     // --- 测试辅助 ---
