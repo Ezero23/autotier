@@ -398,4 +398,32 @@ export const handlers = [
   ),
   http.post(`${TAURI_ENDPOINT}/reset_circuit_breaker`, () => success(true)),
   http.post(`${TAURI_ENDPOINT}/get_circuit_breaker_stats`, () => success(null)),
+
+  http.post(`${TAURI_ENDPOINT}/autotier_list_provider_slots`, () =>
+    success([]),
+  ),
+  http.post(
+    `${TAURI_ENDPOINT}/autotier_required_slots_status`,
+    async ({ request }) => {
+      const { providerId } = await withJson<{ providerId?: string }>(request);
+      return success({
+        provider_id: providerId ?? "",
+        complete: false,
+        present: [],
+        missing: ["cheap", "mid", "strong"],
+      });
+    },
+  ),
+  http.post(
+    `${TAURI_ENDPOINT}/autotier_upsert_provider_slot`,
+    async ({ request }) => {
+      const { slot } = await withJson<{ slot?: Record<string, unknown> }>(
+        request,
+      );
+      return success(slot ?? {});
+    },
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_delete_provider_slot`, () =>
+    success(1),
+  ),
 ];
