@@ -418,8 +418,6 @@ pub fn evaluate_costs(
     push_assumption(&mut assumptions, ttl.assumption());
     if write_unknown > 0 {
         assumptions.breakdown_coverage = "partial".into();
-    } else if ttl == CacheWriteTtl::Unknown && tokens.cache_creation > 0 {
-        assumptions.breakdown_coverage = "partial".into();
     } else {
         assumptions.breakdown_coverage = "full".into();
     }
@@ -607,18 +605,20 @@ mod tests {
 
     #[test]
     fn historical_price_update_does_not_change_frozen_snapshot_cost() {
-        let mut frozen = CostAssumptions::default();
-        frozen.baseline = Some(PriceLeg {
-            provider_id: Some("p".into()),
-            model_id: "claude-sonnet-4-20250514".into(),
-            price_source: "builtin".into(),
-            price_observed_at: 1,
-            input_per_million: "3.0".into(),
-            output_per_million: "15.0".into(),
-            cache_read_per_million: "0.3".into(),
-            cache_write_5m_per_million: "3.75".into(),
-            cache_write_1h_per_million: "3.75".into(),
-        });
+        let frozen = CostAssumptions {
+            baseline: Some(PriceLeg {
+                provider_id: Some("p".into()),
+                model_id: "claude-sonnet-4-20250514".into(),
+                price_source: "builtin".into(),
+                price_observed_at: 1,
+                input_per_million: "3.0".into(),
+                output_per_million: "15.0".into(),
+                cache_read_per_million: "0.3".into(),
+                cache_write_5m_per_million: "3.75".into(),
+                cache_write_1h_per_million: "3.75".into(),
+            }),
+            ..CostAssumptions::default()
+        };
         assert!(price_leg_is_frozen(frozen.baseline.as_ref()));
 
         let old_rates = frozen.baseline.as_ref().unwrap().rates().unwrap();
