@@ -44,6 +44,7 @@ import {
 } from "@/components/autotier/autotierSlotUi";
 
 const LIVE_READY_LABEL = "Live-ready";
+const EMPTY_SLOTS: AutotierProviderSlot[] = [];
 
 export interface AutotierProviderSlotsPanelProps {
   providerId: string;
@@ -90,7 +91,7 @@ function AutotierProviderSlotsPanelInner({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingSlot, setSavingSlot] = useState<string | null>(null);
 
-  const slots = slotsQuery.data ?? [];
+  const slots = slotsQuery.data ?? EMPTY_SLOTS;
   const rows = useMemo(
     () => rowsForSlotUi(providerId, slots, localOptional),
     [providerId, slots, localOptional],
@@ -98,13 +99,15 @@ function AutotierProviderSlotsPanelInner({
 
   useEffect(() => {
     setDrafts((prev) => {
+      let changed = false;
       const next = { ...prev };
       for (const row of rows) {
         if (next[row.slot] === undefined) {
           next[row.slot] = row.model_id;
+          changed = true;
         }
       }
-      return next;
+      return changed ? next : prev;
     });
   }, [rows]);
 
