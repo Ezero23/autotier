@@ -120,6 +120,7 @@ pub struct FinalizeEvent {
     pub error_code: Option<String>,
 }
 
+#[allow(clippy::large_enum_variant)] // Create carries a full decision row; Finalize is smaller.
 pub enum DecisionEvent {
     Create(AutotierDecisionRow),
     Finalize(FinalizeEvent),
