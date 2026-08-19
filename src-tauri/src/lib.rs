@@ -1699,6 +1699,15 @@ pub fn run() {
             commands::delete_daily_memory_file,
             commands::search_daily_memory_files,
             commands::open_workspace_directory,
+            // AutoTier v0.1: Off/Shadow + Slot/Retention only (no Live commands)
+            commands::autotier_get_routing_config,
+            commands::autotier_save_routing_config,
+            commands::autotier_list_provider_slots,
+            commands::autotier_upsert_provider_slot,
+            commands::autotier_delete_provider_slot,
+            commands::autotier_required_slots_status,
+            commands::autotier_clear_decisions,
+            commands::autotier_prune_decisions,
             // lightweight mode (for testing or low-resource environments)
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
