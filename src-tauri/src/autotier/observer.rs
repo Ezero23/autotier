@@ -318,10 +318,10 @@ mod tests {
     fn shadow_config_for_observe_fails_open_on_error() {
         let mut shadow = AutotierRoutingConfigDto::default();
         shadow.mode = "shadow".to_string();
-        assert!(shadow_config_for_observe(Ok(shadow.clone())).is_some());
+        assert!(shadow_config_for_observe::<&str>(Ok(shadow.clone())).is_some());
 
         shadow.mode = "off".to_string();
-        assert!(shadow_config_for_observe(Ok(shadow)).is_none());
+        assert!(shadow_config_for_observe::<&str>(Ok(shadow)).is_none());
 
         let failed: Result<AutotierRoutingConfigDto, &str> = Err("db locked");
         assert!(shadow_config_for_observe(failed).is_none());
