@@ -213,6 +213,7 @@ pub fn enqueue_finalize(db: Arc<Database>, event: FinalizeEvent) -> bool {
 ///
 /// 无 `message_id` 且无计费 token 时不写（合法无 Usage，保持 `is_complete=false`）。
 /// 不反查 `proxy_request_logs`。
+#[allow(clippy::too_many_arguments)]
 pub fn enqueue_usage_finalize(
     db: Arc<Database>,
     decision_id: String,
