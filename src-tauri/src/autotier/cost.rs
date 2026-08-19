@@ -296,25 +296,24 @@ pub fn parse_cost_assumptions(raw: &str) -> CostAssumptions {
 
 pub fn serialize_cost_assumptions(doc: &CostAssumptions) -> String {
     let mut current = doc.clone();
-    loop {
-        let encoded = serde_json::to_string(&current).unwrap_or_else(|_| "{}".into());
-        if encoded.len() <= COST_ASSUMPTIONS_MAX_LEN {
-            return encoded;
-        }
-        if current.candidate.is_some() {
-            current.candidate = None;
-            continue;
-        }
-        if current.assumptions.len() > 1 {
-            current.assumptions.pop();
-            push_assumption(&mut current, ASSUMPTION_TRUNCATED);
-            continue;
-        }
+    let mut encoded = serde_json::to_string(&current).unwrap_or_else(|_| "{}".into());
+    if encoded.len() <= COST_ASSUMPTIONS_MAX_LEN {
+        return encoded;
+    }
+    current.candidate = None;
+    encoded = serde_json::to_string(&current).unwrap_or_else(|_| "{}".into());
+    while encoded.len() > COST_ASSUMPTIONS_MAX_LEN && current.assumptions.len() > 1 {
+        current.assumptions.truncate(current.assumptions.len() / 2);
+        push_assumption(&mut current, ASSUMPTION_TRUNCATED);
+        encoded = serde_json::to_string(&current).unwrap_or_else(|_| "{}".into());
+    }
+    if encoded.len() > COST_ASSUMPTIONS_MAX_LEN {
         let mut fallback = CostAssumptions::default();
         push_assumption(&mut fallback, ASSUMPTION_TRUNCATED);
-        fallback.cache_write_ttl = current.cache_write_ttl;
+        fallback.cache_write_ttl = current.cache_write_ttl.clone();
         return serde_json::to_string(&fallback).unwrap_or_else(|_| "{}".into());
     }
+    encoded
 }
 
 /// Create 时写入的 TTL 假设（尚无价格快照）。
