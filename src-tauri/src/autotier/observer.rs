@@ -12,8 +12,8 @@ use crate::database::{AutotierDecisionRow, AutotierRoutingConfigDto};
 use sha2::{Digest, Sha256};
 
 use super::{
-    extract_features, shadow_decide, DecisionInput, RoutingDecision, RoutingMode,
-    SessionIdHash, FEATURE_VERSION,
+    extract_features, shadow_decide, DecisionInput, RoutingDecision, RoutingMode, SessionIdHash,
+    FEATURE_VERSION,
 };
 
 /// 检查配置是否启用 Shadow 观测。
@@ -21,6 +21,20 @@ use super::{
 /// v0.1 仅 `off` 和 `shadow` 激活：配置非 `shadow` 时跳过全部逻辑。
 pub fn is_shadow_enabled(config: &AutotierRoutingConfigDto) -> bool {
     config.mode == "shadow"
+}
+
+/// 配置读取成功且 mode=shadow 时才观测；读取失败则旁路（不启用 Shadow）。
+pub fn shadow_config_for_observe<E: std::fmt::Display>(
+    result: Result<AutotierRoutingConfigDto, E>,
+) -> Option<AutotierRoutingConfigDto> {
+    match result {
+        Ok(config) if is_shadow_enabled(&config) => Some(config),
+        Ok(_) => None,
+        Err(e) => {
+            log::warn!("[AutoTier] config read failed, skip shadow: {e}");
+            None
+        }
+    }
 }
 
 /// 对 Session ID 做 SHA-256 hex 哈希。
@@ -46,7 +60,11 @@ pub struct ShadowInput {
 
 /// 构建 Shadow 观测数据库行。
 ///
-/// Shadow 不变量（PRD §7.3 FR-DEC-003）：
+/// 入口阶段只记录客户端请求组与候选建议。Baseline/Actual 必须等 Forwarder
+/// 回填真实出站（Phase 4C），此处保持 `None`，不得把入口 `request_model` /
+/// 初始 Provider 冒充为基线或实际出站。
+///
+/// Shadow 不变量（PRD §7.3 FR-DEC-003）在入口对 `None == None` 成立：
 /// - `autotier_mutated_request = false`
 /// - `actual_outbound_* == baseline_outbound_*`
 ///
@@ -84,8 +102,8 @@ pub fn build_shadow_row(
             initial_selected_provider: Some(input.provider_id.clone()),
         },
         baseline_outbound: super::BaselineOutboundFields {
-            baseline_outbound_model: Some(input.request_model.clone()),
-            baseline_outbound_provider: Some(input.provider_id.clone()),
+            baseline_outbound_model: None,
+            baseline_outbound_provider: None,
         },
         candidate: super::CandidateFields {
             recommended_slot: engine.recommended_slot,
@@ -93,8 +111,8 @@ pub fn build_shadow_row(
             candidate_provider: None,
         },
         actual_outbound: super::ActualOutboundFields {
-            actual_outbound_model: Some(input.request_model.clone()),
-            actual_outbound_provider: Some(input.provider_id.clone()),
+            actual_outbound_model: None,
+            actual_outbound_provider: None,
         },
         autotier_mutated_request: false,
         complexity_score: engine.complexity_score,
@@ -121,7 +139,10 @@ pub fn build_shadow_row(
         initial_selected_provider: decision.client_request.initial_selected_provider.clone(),
 
         baseline_outbound_model: decision.baseline_outbound.baseline_outbound_model.clone(),
-        baseline_outbound_provider: decision.baseline_outbound.baseline_outbound_provider.clone(),
+        baseline_outbound_provider: decision
+            .baseline_outbound
+            .baseline_outbound_provider
+            .clone(),
 
         recommended_slot: decision
             .candidate
@@ -140,8 +161,10 @@ pub fn build_shadow_row(
 
         complexity_score: Some(decision.complexity_score as f64),
         confidence: Some(decision.confidence as f64),
-        reason_codes_json: serde_json::to_string(&decision.reason_codes).unwrap_or_else(|_| "[]".into()),
-        unsafe_reasons_json: serde_json::to_string(&decision.unsafe_reasons).unwrap_or_else(|_| "[]".into()),
+        reason_codes_json: serde_json::to_string(&decision.reason_codes)
+            .unwrap_or_else(|_| "[]".into()),
+        unsafe_reasons_json: serde_json::to_string(&decision.unsafe_reasons)
+            .unwrap_or_else(|_| "[]".into()),
         safe_to_execute: decision.safe_to_execute,
 
         feature_json: serde_json::to_string(&features).unwrap_or_else(|_| "{}".into()),
@@ -201,19 +224,23 @@ mod tests {
     }
 
     #[test]
-    fn shadow_preserves_model_and_provider() {
+    fn shadow_preserves_client_request_and_leaves_outbound_unset() {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
         let (row, _dec) = build_shadow_row(&input, &body, &config);
 
         assert_eq!(row.client_requested_model, "claude-sonnet-4-20250514");
-        assert_eq!(row.baseline_outbound_model.as_deref(), Some("claude-sonnet-4-20250514"));
-        assert_eq!(row.actual_outbound_model.as_deref(), Some("claude-sonnet-4-20250514"));
-        assert_eq!(row.baseline_outbound_provider.as_deref(), Some("provider-a"));
-        assert_eq!(row.actual_outbound_provider.as_deref(), Some("provider-a"));
+        assert_eq!(row.initial_selected_provider.as_deref(), Some("provider-a"));
+        assert_eq!(row.baseline_outbound_model, None);
+        assert_eq!(row.actual_outbound_model, None);
+        assert_eq!(row.baseline_outbound_provider, None);
+        assert_eq!(row.actual_outbound_provider, None);
+        assert_eq!(row.candidate_model, None);
+        assert_eq!(row.candidate_provider, None);
         assert!(!row.autotier_mutated_request);
         assert!(!row.is_complete);
+        assert!(!row.safe_to_execute);
     }
 
     #[test]
@@ -268,5 +295,35 @@ mod tests {
         assert!(!row.feature_json.contains("sess-abc"));
         let parsed: serde_json::Value = serde_json::from_str(&row.feature_json).unwrap();
         assert!(parsed.get("original_model").is_some());
+    }
+
+    #[test]
+    fn feature_json_contains_no_raw_prompt() {
+        let canary = "CANARY_PROMPT_SECRET_4A_do_not_persist";
+        let input = short_input("claude-sonnet-4-20250514", "provider-a");
+        let body = json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": canary}]
+        });
+        let config = AutotierRoutingConfigDto::default();
+        let (row, _) = build_shadow_row(&input, &body, &config);
+
+        assert!(
+            !row.feature_json.contains(canary),
+            "feature_json must not contain raw prompt"
+        );
+    }
+
+    #[test]
+    fn shadow_config_for_observe_fails_open_on_error() {
+        let mut shadow = AutotierRoutingConfigDto::default();
+        shadow.mode = "shadow".to_string();
+        assert!(shadow_config_for_observe(Ok(shadow.clone())).is_some());
+
+        shadow.mode = "off".to_string();
+        assert!(shadow_config_for_observe(Ok(shadow)).is_none());
+
+        let failed: Result<AutotierRoutingConfigDto, &str> = Err("db locked");
+        assert!(shadow_config_for_observe(failed).is_none());
     }
 }

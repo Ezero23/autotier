@@ -250,14 +250,10 @@ async fn shadow_non_streaming_preserves_model_and_provider() {
     let row = &decisions[0];
     assert_eq!(row.mode, "shadow");
     assert_eq!(row.client_requested_model, "claude-sonnet-4-20250514");
-    assert_eq!(
-        row.baseline_outbound_model.as_deref(),
-        Some("claude-sonnet-4-20250514")
-    );
-    assert_eq!(
-        row.actual_outbound_model.as_deref(),
-        Some("claude-sonnet-4-20250514")
-    );
+    assert_eq!(row.baseline_outbound_model, None);
+    assert_eq!(row.actual_outbound_model, None);
+    assert_eq!(row.baseline_outbound_provider, None);
+    assert_eq!(row.actual_outbound_provider, None);
     assert_eq!(row.initial_selected_provider.as_deref(), Some("p-shadow"));
     assert!(!row.autotier_mutated_request);
     assert!(!row.is_complete);

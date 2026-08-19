@@ -21,9 +21,9 @@
 // pub use 重导出为后续 Phase 准备，当前模块私有故显式允许 unused。
 #![allow(dead_code, unused_imports)]
 
-mod features;
 mod decision;
 mod extractor;
+mod features;
 mod observer;
 
 pub use decision::{
@@ -32,7 +32,9 @@ pub use decision::{
 };
 pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
-pub use observer::{build_shadow_row, hash_session_id, is_shadow_enabled, ShadowInput};
+pub use observer::{
+    build_shadow_row, hash_session_id, is_shadow_enabled, shadow_config_for_observe, ShadowInput,
+};
 
 use crate::app_config::AppType;
 use serde::{Deserialize, Serialize};
@@ -96,7 +98,11 @@ impl RoutingMode {
     pub fn is_live(self) -> bool {
         matches!(
             self,
-            Self::CanaryLive | Self::FullLive | Self::ForcedCheap | Self::ForcedMid | Self::ForcedStrong
+            Self::CanaryLive
+                | Self::FullLive
+                | Self::ForcedCheap
+                | Self::ForcedMid
+                | Self::ForcedStrong
         )
     }
 }
@@ -296,7 +302,8 @@ impl RoutingDecision {
         if self.autotier_mutated_request {
             return Err(ShadowInvariantViolation::RequestMutated);
         }
-        if self.actual_outbound.actual_outbound_model != self.baseline_outbound.baseline_outbound_model
+        if self.actual_outbound.actual_outbound_model
+            != self.baseline_outbound.baseline_outbound_model
         {
             return Err(ShadowInvariantViolation::OutboundModelMismatch {
                 actual: self.actual_outbound.actual_outbound_model.clone(),
@@ -486,8 +493,7 @@ mod tests {
     #[test]
     fn shadow_invariant_fails_on_model_mismatch() {
         let mut decision = make_shadow_decision();
-        decision.actual_outbound.actual_outbound_model =
-            Some("claude-haiku-3.5".to_string());
+        decision.actual_outbound.actual_outbound_model = Some("claude-haiku-3.5".to_string());
 
         let err = decision.check_shadow_invariant().unwrap_err();
         assert!(matches!(

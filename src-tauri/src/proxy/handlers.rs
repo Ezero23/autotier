@@ -187,10 +187,11 @@ async fn handle_messages_for_app(
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
 
     // AutoTier Shadow Observe（Phase 4）：仅提取特征+生成决策记录，不改请求/不阻塞转发。
-    // 配置非 shadow 模式时跳过；DB 写入在 tokio::spawn 里异步完成，失败只 log。
+    // 配置非 shadow 或读取失败时跳过；DB 写入在 tokio::spawn 里异步完成，失败只 log。
     {
-        let autotier_config = state.db.autotier_get_config().unwrap_or_default();
-        if crate::autotier::is_shadow_enabled(&autotier_config) {
+        if let Some(autotier_config) =
+            crate::autotier::shadow_config_for_observe(state.db.autotier_get_config())
+        {
             let decision_id = uuid::Uuid::new_v4().to_string();
             let (row, _) = crate::autotier::build_shadow_row(
                 &crate::autotier::ShadowInput {
