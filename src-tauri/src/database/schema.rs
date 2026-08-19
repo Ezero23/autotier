@@ -308,6 +308,26 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // Session detail rows are pruned after rollup, so request IDs needed
+        // for fork/rewrite deduplication live in a compact durable ledger.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS session_usage_dedup (
+                data_source TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                semantic_id TEXT NOT NULL,
+                has_entry_id INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (data_source, request_id)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_usage_dedup_semantic
+             ON session_usage_dedup(data_source, semantic_id, has_entry_id)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         // 19. Profiles 表（全应用共享的项目实体，payload 按 app 分槽快照
         //     供应商/MCP/Skills/Prompt；各应用分组的 current 标记在 settings 表）
         conn.execute(
@@ -682,9 +702,14 @@ impl Database {
                         Self::set_user_version(conn, 16)?;
                     }
                     16 => {
-                        log::info!("迁移数据库从 v16 到 v17（AutoTier: 决策日志、配置、Slot 与标注表）");
+                        log::info!("迁移数据库从 v16 到 v17（添加会话用量持久去重账本）");
                         Self::migrate_v16_to_v17(conn)?;
                         Self::set_user_version(conn, 17)?;
+                    }
+                    17 => {
+                        log::info!("迁移数据库从 v17 到 v18（AutoTier: 决策日志、配置、Slot 与标注表）");
+                        Self::migrate_v17_to_v18(conn)?;
+                        Self::set_user_version(conn, 18)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1698,7 +1723,7 @@ impl Database {
         crate::services::session_usage_codex::reset_codex_usage_on_conn(conn, &codex_dir)
     }
 
-    /// v16 → v17：AutoTier 表迁移
+    /// v17 → v18：AutoTier 表迁移
     ///
     /// 创建四张 `autotier_*` 表及索引（PRD §11）。
     /// 所有建表使用 `CREATE TABLE IF NOT EXISTS` 保证幂等：
@@ -1707,9 +1732,9 @@ impl Database {
     /// - 不修改任何现有基座表
     ///
     /// Migration 版本规则（PRD §11.6）：version = 导入基座 user_version + 1。
-    /// 当前锁定基座 user_version = 16，故 AutoTier migration version = 17。
-    /// 17 不是产品常量；Phase 2 开始前已重新读取实际导入基座的 user_version 确认。
-    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+    /// 2026-08-19 上游 sync 至 v3.20.0，基座 user_version 升至 17（会话用量去重账本），
+    /// AutoTier migration 相应重编号为 18。
+    fn migrate_v17_to_v18(conn: &Connection) -> Result<(), AppError> {
         // autotier_provider_slots（PRD §11.1）
         conn.execute(
             "CREATE TABLE IF NOT EXISTS autotier_provider_slots (
@@ -1731,7 +1756,7 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_provider_slots 失败: {e}")))?;
+        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_provider_slots 失败: {e}")))?;
 
         // autotier_routing_config（PRD §11.2）
         conn.execute(
@@ -1747,7 +1772,7 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_routing_config 失败: {e}")))?;
+        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_routing_config 失败: {e}")))?;
 
         // autotier_routing_decisions（PRD §11.3）
         conn.execute(
@@ -1809,7 +1834,7 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_routing_decisions 失败: {e}")))?;
+        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_routing_decisions 失败: {e}")))?;
 
         // autotier_decision_labels（PRD §11.4）
         conn.execute(
@@ -1826,7 +1851,7 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: autotier_decision_labels 失败: {e}")))?;
+        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_decision_labels 失败: {e}")))?;
 
         // 索引（PRD §11.5）
         for (idx_name, sql) in [
@@ -1860,9 +1885,26 @@ impl Database {
             ),
         ] {
             conn.execute(sql, [])
-                .map_err(|e| AppError::Database(format!("migrate_v16_to_v17: 索引 {idx_name} 失败: {e}")))?;
+                .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: 索引 {idx_name} 失败: {e}")))?;
         }
 
+        Ok(())
+    }
+
+    /// v16 -> v17: preserve session request identities after detail rollup.
+    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS session_usage_dedup (
+                data_source TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                semantic_id TEXT NOT NULL,
+                has_entry_id INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (data_source, request_id)
+             );
+             CREATE INDEX IF NOT EXISTS idx_session_usage_dedup_semantic
+             ON session_usage_dedup(data_source, semantic_id, has_entry_id);",
+        )
+        .map_err(|error| AppError::Database(format!("创建会话用量去重账本失败: {error}")))?;
         Ok(())
     }
 
@@ -1917,7 +1959,23 @@ impl Database {
                 "0.50",
                 "6.25",
             ),
-            // Claude 4.6 系列
+            // Claude 4.6 系列（裸 id 行覆盖无日期后缀的日志变体，与 dated 行同价）
+            (
+                "claude-opus-4-6",
+                "Claude Opus 4.6",
+                "5",
+                "25",
+                "0.50",
+                "6.25",
+            ),
+            (
+                "claude-sonnet-4-6",
+                "Claude Sonnet 4.6",
+                "3",
+                "15",
+                "0.30",
+                "3.75",
+            ),
             (
                 "claude-opus-4-6-20260206",
                 "Claude Opus 4.6",
@@ -2004,15 +2062,16 @@ impl Database {
             // GPT-5.6 系列（Sol / Terra / Luna，2026-06 发布）
             // 5.6 家族起 cache write 收 1.25× 输入价（此前 GPT 模型写缓存免费，勿回填旧系列）
             ("gpt-5.6-sol", "GPT-5.6 Sol", "5", "30", "0.50", "6.25"),
+            // 2026-07-30 OpenAI 降价：luna -80%、terra -20%，sol 不变（Fast mode 2× 价不入表）
+            ("gpt-5.6-terra", "GPT-5.6 Terra", "2", "12", "0.20", "2.50"),
             (
-                "gpt-5.6-terra",
-                "GPT-5.6 Terra",
-                "2.50",
-                "15",
+                "gpt-5.6-luna",
+                "GPT-5.6 Luna",
+                "0.20",
+                "1.20",
+                "0.02",
                 "0.25",
-                "3.125",
             ),
-            ("gpt-5.6-luna", "GPT-5.6 Luna", "1", "6", "0.10", "1.25"),
             // 裸名 gpt-5.6 是 sol 的官方别名；effort 后缀对齐 gpt-5.5 系列的记账形态
             ("gpt-5.6", "GPT-5.6 Sol", "5", "30", "0.50", "6.25"),
             ("gpt-5.6-low", "GPT-5.6 Sol", "5", "30", "0.50", "6.25"),
@@ -2072,6 +2131,14 @@ impl Database {
             ),
             // GPT-5.3 Codex 系列
             ("gpt-5.3-codex", "GPT-5.3 Codex", "1.75", "14", "0.175", "0"),
+            (
+                "gpt-5.3-codex-spark",
+                "GPT-5.3 Codex Spark",
+                "1.75",
+                "14",
+                "0.175",
+                "0",
+            ),
             (
                 "gpt-5.3-codex-low",
                 "GPT-5.3 Codex",
@@ -2198,6 +2265,20 @@ impl Database {
             ("gpt-4.1", "GPT-4.1", "2", "8", "0.50", "0"),
             ("gpt-4.1-mini", "GPT-4.1 Mini", "0.40", "1.60", "0.10", "0"),
             ("gpt-4.1-nano", "GPT-4.1 Nano", "0.10", "0.40", "0.025", "0"),
+            // Gemini 3.7 系列
+            // 录的是介绍价（官方公告 + ai.google.dev 价表 + models.dev 三源一致）。
+            // ⚠️ 介绍价 2026-12-31 到期，2027-01-01 起恢复 1.50/7.50/0.15（= 3.6 Flash 现价）。
+            // 到期后需走 seed + repair 双写改回；届时 models.dev 会先更新，
+            // /jason-update-model 审计的 A 段会自动报出这一行作为提醒——
+            // 因此这一行刻意不进 audit-ignore.json，勿加豁免（会屏蔽掉该提醒）。
+            (
+                "gemini-3.7-flash",
+                "Gemini 3.7 Flash",
+                "0.75",
+                "3.75",
+                "0.075",
+                "0",
+            ),
             // Gemini 3.6 系列
             (
                 "gemini-3.6-flash",
@@ -2214,6 +2295,14 @@ impl Database {
                 "1.50",
                 "9.00",
                 "0.15",
+                "0",
+            ),
+            (
+                "gemini-3.5-flash-lite",
+                "Gemini 3.5 Flash Lite",
+                "0.30",
+                "2.50",
+                "0.03",
                 "0",
             ),
             // Gemini 3.1 系列
@@ -2405,37 +2494,59 @@ impl Database {
                 "0",
             ),
             ("deepseek-v3", "DeepSeek V3", "0.28", "1.11", "0.028", "0"),
+            // ── DeepSeek V4 系列：2026-08-16 16:00 UTC 起改为峰谷双档计价 ──
+            // 官方价页（api-docs.deepseek.com/quick_start/pricing，中英一致）直接挂 USD，
+            // 不再需要 CNY 折算。高峰时段 = 北京时间 9:00-12:00 与 14:00-18:00
+            // （= UTC 01:00-04:00、06:00-10:00），共 7h/天；其余 17h 为空闲档。
+            //
+            // 🔴 本表每模型仅一行、无时段维度，**统一录高峰档**（Jason 2026-08-18 拍板）：
+            //   ① 官方措辞是「空闲价为高峰价的一半」，高峰档才是基准挂牌价；
+            //   ② 高峰时段正是中文用户的工作时间，是 AI 编程主力时段。
+            //   代价=夜间/凌晨用量高估一倍。勿按「阶梯取低档」惯例改成空闲档。
+            //
+            // input=缓存未命中价，cache_read=缓存命中价；DeepSeek 不单收 cache write → 0。
+            // deepseek-chat / deepseek-reasoner 自 2026-07 起为 V4 Flash 的 legacy 别名（同价）
             (
                 "deepseek-chat",
                 "DeepSeek Chat",
-                "0.27",
-                "1.10",
-                "0.07",
+                "0.44",
+                "1.32",
+                "0.014",
                 "0",
             ),
             (
                 "deepseek-reasoner",
                 "DeepSeek Reasoner",
-                "0.55",
-                "2.19",
-                "0.14",
+                "0.44",
+                "1.32",
+                "0.014",
                 "0",
             ),
-            // DeepSeek V4 系列（官方 CNY 按 1 USD ≈ 7.14 折算）
             (
                 "deepseek-v4-flash",
                 "DeepSeek V4 Flash",
-                "0.14",
-                "0.28",
-                "0.0028",
+                "0.44",
+                "1.32",
+                "0.014",
+                "0",
+            ),
+            // 部分上游（如阿里百炼）回传 4 位 MMDD 日期变体。查价的
+            // strip_model_date_suffix 只剥 ISO / 8 位 YYYYMMDD / 6 位 YYMMDD，
+            // 剥不到裸 id，前缀兜底也只匹配更长的行 —— 不补别名会静默按 0 计费
+            (
+                "deepseek-v4-flash-0731",
+                "DeepSeek V4 Flash",
+                "0.44",
+                "1.32",
+                "0.014",
                 "0",
             ),
             (
                 "deepseek-v4-pro",
                 "DeepSeek V4 Pro",
-                "0.435",
-                "0.87",
-                "0.003625",
+                "1.32",
+                "3.96",
+                "0.044",
                 "0",
             ),
             // Kimi (月之暗面)
@@ -2464,6 +2575,15 @@ impl Database {
                 "0.95",
                 "4.00",
                 "0.19",
+                "0",
+            ),
+            // HighSpeed 加速档=本体 2 倍价（Kimi 官方一贯模式，同 K2 Turbo）
+            (
+                "kimi-k2.7-code-highspeed",
+                "Kimi K2.7 Code HighSpeed",
+                "1.90",
+                "8.00",
+                "0.38",
                 "0",
             ),
             ("kimi-k3", "Kimi K3", "3.00", "15.00", "0.30", "0"),
@@ -2508,13 +2628,15 @@ impl Database {
                 "0.06",
                 "0.375",
             ),
-            ("minimax-m3", "MiniMax M3", "0.60", "2.40", "0.12", "0"),
+            ("minimax-m3", "MiniMax M3", "0.30", "1.20", "0.06", "0"),
             // GLM (智谱)
             ("glm-4.7", "GLM-4.7", "0.6", "2.2", "0.11", "0"),
             ("glm-4.6", "GLM-4.6", "0.6", "2.2", "0.11", "0"),
             ("glm-5", "GLM-5", "1", "3.2", "0.2", "0"),
             ("glm-5.1", "GLM-5.1", "1.4", "4.4", "0.26", "0"),
             ("glm-5.2", "GLM-5.2", "1.4", "4.4", "0.26", "0"),
+            ("glm-5-turbo", "GLM-5-Turbo", "1.2", "4", "0.24", "0"),
+            ("glm-5v-turbo", "GLM-5V-Turbo", "1.2", "4", "0.24", "0"),
             // MiMo (小米)
             (
                 "mimo-v2-flash",
@@ -2535,6 +2657,7 @@ impl Database {
                 "0",
             ),
             // Qwen 系列 (阿里巴巴)
+            ("qwen3.8-max", "Qwen3.8 Max", "2", "6", "0.25", "2.50"),
             ("qwen3.7-max", "Qwen3.7 Max", "2.50", "7.50", "0.25", "0"),
             ("qwen3.7-plus", "Qwen3.7 Plus", "0.40", "1.60", "0.08", "0"),
             (
@@ -2543,6 +2666,14 @@ impl Database {
                 "0.325",
                 "1.95",
                 "0.065",
+                "0",
+            ),
+            (
+                "qwen3.6-flash",
+                "Qwen3.6 Flash",
+                "0.1875",
+                "1.125",
+                "0.0375",
                 "0",
             ),
             ("qwen3.5-plus", "Qwen3.5 Plus", "0.26", "1.56", "0.052", "0"),
@@ -2599,10 +2730,13 @@ impl Database {
             ("qwq-32b", "QwQ 32B", "0.20", "0.60", "0", "0"),
             ("qwen3-32b", "Qwen3 32B", "0.16", "0.64", "0", "0"),
             // Grok 系列 (xAI)
-            ("grok-4.5", "Grok 4.5", "2", "6", "0.50", "0"),
+            // 4.5/4.6 均为分档计价：prompt ≥200K 时单价翻倍（4/12，cached 亦翻倍）。
+            // 本表无档位列，统一取基础档（<200K），与其它分档厂商口径一致
+            ("grok-4.6", "Grok 4.6", "2", "6", "0.50", "0"),
+            ("grok-4.5", "Grok 4.5", "2", "6", "0.30", "0"),
             // Grok CLI 官方 OAuth 态 modelUsage 上报的内部别名。定价由
             // costUsdTicks（1 tick = 1e-10 USD）双轮实测反推：input/output 与
-            // grok-4.5 同为 2/6，cache read 实际按 0.30 计（非 API 挂牌的 0.50）
+            // grok-4.5 同为 2/6，cache read 同为 0.30
             ("grok-4.5-build", "Grok 4.5 Build", "2", "6", "0.30", "0"),
             ("grok-4.3", "Grok 4.3", "1.25", "2.50", "0.20", "0"),
             (
@@ -2772,6 +2906,101 @@ impl Database {
 
     fn repair_current_model_pricing(conn: &Connection) -> Result<(), AppError> {
         let pricing_fixes = [
+            // 2026-08-13 models.dev 审计核价：grok-4.5 的 cached input 官方挂牌为 0.30
+            // （docs.x.ai 现行价表），与 grok-4.5-build 的实测计费一致；早先按 0.50
+            // 录入的行在此校正。注意 0.50 是 grok-4.6 的 cached 价，勿两者互串
+            (
+                "grok-4.5", "Grok 4.5", "2", "6", "0.30", "0", "2", "6", "0.50", "0",
+            ),
+            // 2026-07-30 OpenAI GPT-5.6 降价：luna -80%、terra -20%（sol 不变）。
+            // 每档两条守卫：主守卫匹配 ≥v3.19（已跑过 07-12 cache_write 修正），
+            // 0 态守卫匹配 <v3.19 直升用户（cache_write 仍为旧 seed 的 0）
+            (
+                "gpt-5.6-luna",
+                "GPT-5.6 Luna",
+                "0.20",
+                "1.20",
+                "0.02",
+                "0.25",
+                "1",
+                "6",
+                "0.10",
+                "1.25",
+            ),
+            (
+                "gpt-5.6-luna",
+                "GPT-5.6 Luna",
+                "0.20",
+                "1.20",
+                "0.02",
+                "0.25",
+                "1",
+                "6",
+                "0.10",
+                "0",
+            ),
+            (
+                "gpt-5.6-terra",
+                "GPT-5.6 Terra",
+                "2",
+                "12",
+                "0.20",
+                "2.50",
+                "2.50",
+                "15",
+                "0.25",
+                "3.125",
+            ),
+            (
+                "gpt-5.6-terra",
+                "GPT-5.6 Terra",
+                "2",
+                "12",
+                "0.20",
+                "2.50",
+                "2.50",
+                "15",
+                "0.25",
+                "0",
+            ),
+            // 2026-07-31 models.dev 审计核价：DeepSeek V4 发布后 chat/reasoner 降为 V4 Flash
+            // 别名价；MiniMax M3 官方 standard 档 0.3/1.2（旧值疑似录了加速档）
+            (
+                "deepseek-chat",
+                "DeepSeek Chat",
+                "0.14",
+                "0.28",
+                "0.0028",
+                "0",
+                "0.27",
+                "1.10",
+                "0.07",
+                "0",
+            ),
+            (
+                "deepseek-reasoner",
+                "DeepSeek Reasoner",
+                "0.14",
+                "0.28",
+                "0.0028",
+                "0",
+                "0.55",
+                "2.19",
+                "0.14",
+                "0",
+            ),
+            (
+                "minimax-m3",
+                "MiniMax M3",
+                "0.30",
+                "1.20",
+                "0.06",
+                "0",
+                "0.60",
+                "2.40",
+                "0.12",
+                "0",
+            ),
             // 2026-07-12 GPT-5.6 家族 cache write=1.25× 输入价（OpenAI 5.6 起的新规），
             // 修正早期 seed 的 0 值；只匹配未被用户改过的行
             (
@@ -3071,6 +3300,74 @@ impl Database {
                 "0.02",
                 "0",
             ),
+            // 2026-08-16 16:00 UTC DeepSeek V4 全系改峰谷双档计价（本表统一录高峰档，
+            // 理由见 seed_model_pricing 里 DeepSeek V4 段的注释）。涨幅很大：
+            // flash 0.14/0.28/0.0028 → 0.44/1.32/0.014；pro 0.435/0.87/0.003625 → 1.32/3.96/0.044。
+            //
+            // 🔴 这五条必须留在数组末尾：上面 2026-07-31 的 chat/reasoner 条目与
+            // 2026-07 的 v4-flash(cache_read 0.028→0.0028) / v4-pro(1.68/3.36→0.435/0.87)
+            // 条目会先把各种历史形态收敛到同一个旧值，这里才能单守卫命中。
+            // 若把本组挪到它们之前，老库会停在中间价位不再前进。
+            (
+                "deepseek-chat",
+                "DeepSeek Chat",
+                "0.44",
+                "1.32",
+                "0.014",
+                "0",
+                "0.14",
+                "0.28",
+                "0.0028",
+                "0",
+            ),
+            (
+                "deepseek-reasoner",
+                "DeepSeek Reasoner",
+                "0.44",
+                "1.32",
+                "0.014",
+                "0",
+                "0.14",
+                "0.28",
+                "0.0028",
+                "0",
+            ),
+            (
+                "deepseek-v4-flash",
+                "DeepSeek V4 Flash",
+                "0.44",
+                "1.32",
+                "0.014",
+                "0",
+                "0.14",
+                "0.28",
+                "0.0028",
+                "0",
+            ),
+            (
+                "deepseek-v4-flash-0731",
+                "DeepSeek V4 Flash",
+                "0.44",
+                "1.32",
+                "0.014",
+                "0",
+                "0.14",
+                "0.28",
+                "0.0028",
+                "0",
+            ),
+            (
+                "deepseek-v4-pro",
+                "DeepSeek V4 Pro",
+                "1.32",
+                "3.96",
+                "0.044",
+                "0",
+                "0.435",
+                "0.87",
+                "0.003625",
+                "0",
+            ),
         ];
 
         for (
@@ -3123,7 +3420,7 @@ impl Database {
         Self::ensure_model_pricing_seeded_on_conn(&conn)
     }
 
-    fn ensure_model_pricing_seeded_on_conn(conn: &Connection) -> Result<(), AppError> {
+    pub(crate) fn ensure_model_pricing_seeded_on_conn(conn: &Connection) -> Result<(), AppError> {
         // 每次启动都执行 INSERT OR IGNORE，增量追加新模型；仅修复仍等于旧内置值的定价。
         Self::seed_model_pricing(conn)?;
         Self::repair_current_model_pricing(conn)
@@ -3424,6 +3721,8 @@ mod tests {
         Database::apply_schema_migrations_on_conn(&conn)?;
 
         assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::table_exists(&conn, "session_usage_dedup")?);
+        assert!(Database::table_exists(&conn, "autotier_routing_decisions")?);
         let counts: (i64, i64, i64, i64) = conn.query_row(
             "SELECT
                 (SELECT COUNT(*) FROM proxy_request_logs WHERE data_source = 'codex_session'),
@@ -3434,6 +3733,58 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
         assert_eq!(counts, (0, 1, 0, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v16_to_v17_creates_session_usage_dedup_ledger() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 16)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::table_exists(&conn, "session_usage_dedup")?);
+        conn.execute(
+            "INSERT INTO session_usage_dedup
+             (data_source, request_id, semantic_id, has_entry_id)
+             VALUES ('pi_session', 'request', 'semantic', 1)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// 真实库迁移冒烟：AUTOTIER_SMOKE_DB 指向一份上游 v17 真实库副本时，
+    /// 验证 v17→v18 迁移能建出 AutoTier 表且不改动既有明细。
+    /// 未设置环境变量时直接通过（CI 无真实库）。
+    #[test]
+    fn migrate_real_v17_db_creates_autotier_tables() -> Result<(), AppError> {
+        let Ok(path) = std::env::var("AUTOTIER_SMOKE_DB") else {
+            return Ok(());
+        };
+        let conn = Connection::open(&path)?;
+        let version_before = Database::get_user_version(&conn)?;
+        assert!(
+            version_before == 17 || version_before == 18,
+            "冒烟库必须是 v17（待迁移）或 v18（已迁移过），实际 {version_before}"
+        );
+        let logs_before: i64 =
+            conn.query_row("SELECT COUNT(*) FROM proxy_request_logs", [], |r| r.get(0))?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, 18);
+        for table in [
+            "autotier_provider_slots",
+            "autotier_routing_config",
+            "autotier_routing_decisions",
+            "autotier_decision_labels",
+        ] {
+            assert!(Database::table_exists(&conn, table)?, "缺少表 {table}");
+        }
+        let logs_after: i64 =
+            conn.query_row("SELECT COUNT(*) FROM proxy_request_logs", [], |r| r.get(0))?;
+        assert_eq!(logs_before, logs_after, "迁移不得改动既有明细数据");
         Ok(())
     }
 }

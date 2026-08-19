@@ -150,8 +150,8 @@ UsageLogger::log_with_calculation → INSERT INTO proxy_request_logs（SQLite）
 
 - 引擎：`rusqlite`（同步连接 + `Mutex`，`lock_conn!` 宏）。
 - 建表：`Database::create_tables_on_conn`（`src-tauri/src/database/schema.rs:24`），全部 `CREATE TABLE IF NOT EXISTS`，应用启动时执行。
-- 版本迁移：`apply_schema_migrations_on_conn`（`schema.rs:415`）读取 `PRAGMA user_version`（`schema.rs:2791`），按 0→1→…→16 顺序应用幂等迁移并 `set_user_version`（`schema.rs:2796`）。当前最新版本 **16**。
-- AutoTier 挂接方式：在 `create_tables_on_conn` 追加 `autotier_provider_slots` / `autotier_routing_config` / `autotier_routing_decisions` / `autotier_decision_labels` 的 `CREATE TABLE IF NOT EXISTS`（前缀隔离，符合 PRD 11.6），并按 **AMEND-001 第 5 节规则** `migration version = 导入基座当前 user_version + 1` 做一次性幂等迁移（当前锁定基座 `user_version = 16`，计算结果为 17，但 17 不是常量，Phase 2 开始前必须重读实际导入基座的 `user_version`）；`database/tests.rs` 已有迁移测试模式可复用（如 `:2946` 起的版本跳跃测试）。
+- 版本迁移：`apply_schema_migrations_on_conn`（`schema.rs:415`）读取 `PRAGMA user_version`（`schema.rs:2791`），按 0→1→…→18 顺序应用幂等迁移并 `set_user_version`（`schema.rs:2796`）。当前最新版本 **18**。
+- AutoTier 挂接方式：在 `create_tables_on_conn` 追加 `autotier_provider_slots` / `autotier_routing_config` / `autotier_routing_decisions` / `autotier_decision_labels` 的 `CREATE TABLE IF NOT EXISTS`（前缀隔离，符合 PRD 11.6），并按 **AMEND-001 第 5 节规则** `migration version = 导入基座当前 user_version + 1` 做一次性幂等迁移。**2026-08-19 上游 sync 至 v3.20.0 后基座 `user_version = 17`（会话用量去重账本），AutoTier migration 落地为 17→18**；`database/tests.rs` 已有迁移测试模式可复用（如 `:2946` 起的版本跳跃测试）。
 - JSON→SQLite 历史数据迁移独立存在于 `src-tauri/src/database/migration.rs`（与 schema 版本迁移不同机制，AutoTier 不涉及）。
 
 ## 7. 关闭 AutoTier 后的 Parity（行为一致性）验证锚点

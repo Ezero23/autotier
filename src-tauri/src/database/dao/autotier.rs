@@ -1360,16 +1360,16 @@ mod tests {
     // --- Migration idempotency ---
 
     #[test]
-    fn migration_v16_to_v17_is_idempotent() {
-        // 验证：在已有 v16 数据库上运行迁移后，autotier 表存在且可写
+    fn migration_to_v18_is_idempotent() {
+        // 验证：迁移完成后 autotier 表存在且可写，版本号停在 18
         let conn = Connection::open_in_memory().unwrap();
         Database::create_tables_on_conn(&conn).unwrap();
         Database::apply_schema_migrations_on_conn(&conn).unwrap();
-        assert_eq!(Database::get_user_version(&conn).unwrap(), 17);
+        assert_eq!(Database::get_user_version(&conn).unwrap(), 18);
 
         // 再次运行迁移不应报错
         Database::apply_schema_migrations_on_conn(&conn).unwrap();
-        assert_eq!(Database::get_user_version(&conn).unwrap(), 17);
+        assert_eq!(Database::get_user_version(&conn).unwrap(), 18);
 
         // autotier 表存在
         assert!(Database::table_exists(&conn, "autotier_routing_decisions").unwrap());

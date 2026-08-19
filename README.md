@@ -15,6 +15,7 @@ upstream = https://github.com/farion1231/cc-switch.git
 base commit       = 30409878bdbdf1c7091c559d6afc367a052da39c
 package version   = 3.18.0
 git describe      = v3.18.0-36-g30409878
+last upstream sync = v3.20.0 (0b5da510, 2026-08-19)
 ```
 
 - 上游 README 原样保留在 [`README.upstream.md`](./README.upstream.md);MIT License 与 attribution 未改动
