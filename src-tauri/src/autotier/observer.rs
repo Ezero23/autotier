@@ -11,8 +11,8 @@ use crate::app_config::AppType;
 use crate::database::{AutotierDecisionRow, AutotierRoutingConfigDto};
 
 use super::{
-    extract_features, hash_session_id, shadow_decide, DecisionInput, RoutingDecision, RoutingMode,
-    FEATURE_VERSION,
+    cost::initial_cost_assumptions_json, extract_features, hash_session_id, shadow_decide,
+    DecisionInput, RoutingDecision, RoutingMode, FEATURE_VERSION,
 };
 
 /// 检查配置是否启用 Shadow 观测。
@@ -173,7 +173,7 @@ pub fn build_shadow_row(
         candidate_cost_low_usd: None,
         candidate_cost_base_usd: None,
         candidate_cost_high_usd: None,
-        cost_assumptions_json: "[]".into(),
+        cost_assumptions_json: initial_cost_assumptions_json(body),
 
         status_code: None,
         outcome: None,
@@ -320,5 +320,41 @@ mod tests {
 
         let failed: Result<AutotierRoutingConfigDto, &str> = Err("db locked");
         assert!(shadow_config_for_observe(failed).is_none());
+    }
+
+    #[test]
+    fn cost_assumptions_record_cache_write_ttl_from_body() {
+        let input = short_input("claude-sonnet-4-20250514", "provider-a");
+        let config = AutotierRoutingConfigDto::default();
+
+        let (unknown, _) = build_shadow_row(
+            &input,
+            &short_body("claude-sonnet-4-20250514"),
+            &config,
+            &TEST_SECRET,
+        );
+        let unknown_doc: serde_json::Value =
+            serde_json::from_str(&unknown.cost_assumptions_json).unwrap();
+        assert_eq!(unknown_doc["cache_write_ttl"], "unknown");
+
+        let body_5m = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let (row_5m, _) = build_shadow_row(&input, &body_5m, &config, &TEST_SECRET);
+        let doc_5m: serde_json::Value =
+            serde_json::from_str(&row_5m.cost_assumptions_json).unwrap();
+        assert_eq!(doc_5m["cache_write_ttl"], "5m");
+
+        let body_1h = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let (row_1h, _) = build_shadow_row(&input, &body_1h, &config, &TEST_SECRET);
+        let doc_1h: serde_json::Value =
+            serde_json::from_str(&row_1h.cost_assumptions_json).unwrap();
+        assert_eq!(doc_1h["cache_write_ttl"], "1h");
     }
 }

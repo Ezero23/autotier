@@ -21,6 +21,11 @@ use crate::config::get_app_config_dir;
 use crate::database::{lock_conn, AutotierDecisionRow, Database, FinalizeDecisionParams};
 use crate::error::AppError;
 
+use super::cost::{
+    evaluate_costs, parse_cost_assumptions, price_leg_is_frozen, push_assumption,
+    serialize_cost_assumptions, ttl_from_assumptions, PriceLeg, TokenCounts,
+    ASSUMPTION_PRICE_FROZEN, ASSUMPTION_PRICE_MISSING, ASSUMPTION_WRITE_PRICE_COMBINED,
+};
 use super::SessionIdHash;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -112,6 +117,8 @@ pub struct FinalizeEvent {
     pub actual_cache_read_tokens: Option<i64>,
     pub actual_cache_write_5m_tokens: Option<i64>,
     pub actual_cache_write_1h_tokens: Option<i64>,
+    /// 上游合并的 cache creation；Writer 按请求 TTL 归因到 5m/1h/unknown。
+    pub cache_creation_tokens: Option<i64>,
     pub actual_cost_usd: Option<String>,
     pub status_code: Option<i64>,
     pub outcome: Option<String>,
@@ -243,7 +250,7 @@ pub fn enqueue_usage_finalize(
             actual_input_tokens: Some(input_tokens),
             actual_output_tokens: Some(output_tokens),
             actual_cache_read_tokens: Some(cache_read_tokens),
-            actual_cache_write_5m_tokens: Some(cache_creation_tokens),
+            cache_creation_tokens: Some(cache_creation_tokens),
             status_code: Some(status_code),
             ..Default::default()
         },
@@ -310,6 +317,7 @@ fn process_event(
 }
 
 fn apply_finalize(db: &Database, event: &FinalizeEvent) -> Result<(), AppError> {
+    let (event, cost) = enrich_usage_costs(db, event)?;
     let params = FinalizeDecisionParams {
         decision_id: &event.decision_id,
         completed_at: event.completed_at,
@@ -330,7 +338,178 @@ fn apply_finalize(db: &Database, event: &FinalizeEvent) -> Result<(), AppError> 
         error_code: event.error_code.as_deref(),
     };
     db.autotier_finalize_decision(&params)?;
-    fill_baseline_outbound(db, event)
+    fill_baseline_outbound(db, &event)?;
+    persist_candidate_costs(db, &event.decision_id, &cost)
+}
+
+struct CostPersist {
+    low: Option<String>,
+    base: Option<String>,
+    high: Option<String>,
+    assumptions_json: Option<String>,
+}
+
+/// 在 DAO 写入前按已冻结快照计算成本；缺行则跳过（Create 尚未落库）。
+fn enrich_usage_costs(
+    db: &Database,
+    event: &FinalizeEvent,
+) -> Result<(FinalizeEvent, CostPersist), AppError> {
+    let mut event = event.clone();
+    let skip = CostPersist {
+        low: None,
+        base: None,
+        high: None,
+        assumptions_json: None,
+    };
+    let Some(row) = db.autotier_get_decision(&event.decision_id)? else {
+        return Ok((event, skip));
+    };
+
+    let mut doc = parse_cost_assumptions(&row.cost_assumptions_json);
+
+    if !price_leg_is_frozen(doc.baseline.as_ref()) {
+        let model = event
+            .actual_outbound_model
+            .as_deref()
+            .or(row.actual_outbound_model.as_deref())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(row.client_requested_model.as_str());
+        let provider = event
+            .actual_outbound_provider
+            .as_deref()
+            .or(row.actual_outbound_provider.as_deref())
+            .or(row.initial_selected_provider.as_deref());
+        if let Some(leg) = lookup_price_leg(db, provider, model)? {
+            doc.baseline = Some(leg);
+            push_assumption(&mut doc, ASSUMPTION_PRICE_FROZEN);
+            push_assumption(&mut doc, ASSUMPTION_WRITE_PRICE_COMBINED);
+        } else {
+            push_assumption(&mut doc, ASSUMPTION_PRICE_MISSING);
+        }
+    }
+
+    if !price_leg_is_frozen(doc.candidate.as_ref()) {
+        if let Some(model) = row.candidate_model.as_deref().filter(|s| !s.is_empty()) {
+            if let Some(leg) = lookup_price_leg(db, row.candidate_provider.as_deref(), model)? {
+                doc.candidate = Some(leg);
+            }
+        }
+    }
+
+    let usage_like = event.actual_input_tokens.is_some()
+        || event.actual_output_tokens.is_some()
+        || event.actual_cache_read_tokens.is_some()
+        || event.cache_creation_tokens.is_some();
+
+    if !usage_like {
+        return Ok((
+            event,
+            CostPersist {
+                low: None,
+                base: None,
+                high: None,
+                assumptions_json: Some(serialize_cost_assumptions(&doc)),
+            },
+        ));
+    }
+
+    // 历史行已有实际成本：不得用 live 价重写金额或快照。
+    if row.actual_cost_usd.is_some() {
+        return Ok((event, skip));
+    }
+
+    let ttl = ttl_from_assumptions(&doc);
+    let tokens = TokenCounts {
+        input: event.actual_input_tokens.unwrap_or(0),
+        output: event.actual_output_tokens.unwrap_or(0),
+        cache_read: event.actual_cache_read_tokens.unwrap_or(0),
+        cache_creation: event.cache_creation_tokens.unwrap_or(0),
+        retry_count: event.retry_count.unwrap_or(row.retry_count),
+        fallback_count: event.fallback_count.unwrap_or(row.fallback_count),
+    };
+    let inclusive = crate::services::sql_helpers::is_cache_inclusive_app(&row.app_type);
+    let baseline_rates = doc.baseline.as_ref().and_then(PriceLeg::rates);
+    let candidate_rates = doc.candidate.as_ref().and_then(PriceLeg::rates);
+    let outcome = evaluate_costs(
+        tokens,
+        ttl,
+        baseline_rates.as_ref(),
+        candidate_rates.as_ref(),
+        inclusive,
+        doc,
+    );
+
+    event.actual_cache_write_5m_tokens = outcome.write_5m;
+    event.actual_cache_write_1h_tokens = outcome.write_1h;
+    event.actual_cost_usd = outcome.actual_usd.clone();
+    Ok((
+        event,
+        CostPersist {
+            low: outcome.candidate.low_usd,
+            base: outcome.candidate.base_usd,
+            high: outcome.candidate.high_usd,
+            assumptions_json: Some(serialize_cost_assumptions(&outcome.assumptions)),
+        },
+    ))
+}
+
+fn lookup_price_leg(
+    db: &Database,
+    provider_id: Option<&str>,
+    model_id: &str,
+) -> Result<Option<PriceLeg>, AppError> {
+    if model_id.is_empty() {
+        return Ok(None);
+    }
+    let conn = lock_conn!(db.conn);
+    let Some((input, output, cache_read, cache_creation)) =
+        crate::services::usage_stats::find_model_pricing_row(&conn, model_id)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(PriceLeg {
+        provider_id: provider_id.map(str::to_string),
+        model_id: model_id.to_string(),
+        price_source: "builtin".to_string(),
+        price_observed_at: chrono::Utc::now().timestamp_millis(),
+        input_per_million: input,
+        output_per_million: output,
+        cache_read_per_million: cache_read,
+        cache_write_5m_per_million: cache_creation.clone(),
+        cache_write_1h_per_million: cache_creation,
+    }))
+}
+
+fn persist_candidate_costs(
+    db: &Database,
+    decision_id: &str,
+    cost: &CostPersist,
+) -> Result<(), AppError> {
+    if cost.low.is_none()
+        && cost.base.is_none()
+        && cost.high.is_none()
+        && cost.assumptions_json.is_none()
+    {
+        return Ok(());
+    }
+    let conn = lock_conn!(db.conn);
+    conn.execute(
+        "UPDATE autotier_routing_decisions SET
+            candidate_cost_low_usd = COALESCE(?2, candidate_cost_low_usd),
+            candidate_cost_base_usd = COALESCE(?3, candidate_cost_base_usd),
+            candidate_cost_high_usd = COALESCE(?4, candidate_cost_high_usd),
+            cost_assumptions_json = COALESCE(?5, cost_assumptions_json)
+         WHERE decision_id = ?1",
+        rusqlite::params![
+            decision_id,
+            cost.low.as_deref(),
+            cost.base.as_deref(),
+            cost.high.as_deref(),
+            cost.assumptions_json.as_deref(),
+        ],
+    )
+    .map_err(|e| AppError::Database(format!("candidate cost update failed: {e}")))?;
+    Ok(())
 }
 
 /// DAO Finalize 不更新 Baseline；Shadow 下 Baseline == Actual，须在 Forwarder 后回填。
@@ -363,7 +542,8 @@ mod tests {
     use super::*;
     use crate::app_config::AppType;
     use crate::autotier::{build_shadow_row, ShadowInput};
-    use crate::database::AutotierRoutingConfigDto;
+    use crate::database::{lock_conn, AutotierRoutingConfigDto};
+    use crate::error::AppError;
     use serde_json::json;
     use sha2::Digest;
 
@@ -418,20 +598,43 @@ mod tests {
     }
 
     fn sample_row(decision_id: &str, secret: &[u8]) -> AutotierDecisionRow {
+        sample_row_with(
+            decision_id,
+            secret,
+            "claude-sonnet-4-20250514",
+            json!({
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "hi"}]
+            }),
+        )
+    }
+
+    fn sample_row_with(
+        decision_id: &str,
+        secret: &[u8],
+        model: &str,
+        body: serde_json::Value,
+    ) -> AutotierDecisionRow {
         let input = ShadowInput {
             decision_id: decision_id.to_string(),
             app_type: AppType::Claude,
             session_id: "sess-xyz".to_string(),
-            request_model: "claude-sonnet-4-20250514".to_string(),
+            request_model: model.to_string(),
             provider_id: "p".to_string(),
         };
-        let body = json!({
-            "model": "claude-sonnet-4-20250514",
-            "messages": [{"role": "user", "content": "hi"}]
-        });
         let (row, _) =
             build_shadow_row(&input, &body, &AutotierRoutingConfigDto::default(), secret);
         row
+    }
+
+    fn set_model_input_price(db: &Database, model_id: &str, price: &str) -> Result<(), AppError> {
+        let conn = lock_conn!(db.conn);
+        conn.execute(
+            "UPDATE model_pricing SET input_cost_per_million = ?2 WHERE model_id = ?1",
+            rusqlite::params![model_id, price],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -559,5 +762,186 @@ mod tests {
         assert_eq!(got.outcome.as_deref(), Some("success"));
         assert!(got.completed_at.is_some());
         assert!(!got.is_complete);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn usage_unknown_ttl_does_not_fill_5m_or_1h() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+        let row = sample_row("d-ttl-unknown", &SCOPE_A);
+        assert!(enqueue_create(db.clone(), row));
+        assert!(enqueue_usage_finalize(
+            db.clone(),
+            "d-ttl-unknown".into(),
+            Some("msg_u".into()),
+            "session:msg_u".into(),
+            1000,
+            500,
+            200,
+            100,
+            200,
+        ));
+        assert!(writer_for(db.clone()).flush(Duration::from_secs(5)).await);
+        let got = db.autotier_get_decision("d-ttl-unknown").unwrap().unwrap();
+        assert_eq!(got.actual_cache_write_5m_tokens, None);
+        assert_eq!(got.actual_cache_write_1h_tokens, None);
+        assert!(got.actual_cost_usd.is_some(), "combined write still priced");
+        let doc: serde_json::Value = serde_json::from_str(&got.cost_assumptions_json).unwrap();
+        assert_eq!(doc["cache_write_ttl"], "unknown");
+        assert_eq!(doc["breakdown_coverage"], "partial");
+        assert!(got.candidate_cost_high_usd.is_some());
+        assert_ne!(got.candidate_cost_high_usd, got.actual_cost_usd);
+        assert_ne!(got.candidate_cost_low_usd, got.candidate_cost_high_usd);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn usage_5m_and_1h_ttl_are_attributed_separately() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+
+        let body_5m = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "s", "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        assert!(enqueue_create(
+            db.clone(),
+            sample_row_with("d-ttl-5m", &SCOPE_A, "claude-sonnet-4-20250514", body_5m),
+        ));
+        assert!(enqueue_usage_finalize(
+            db.clone(),
+            "d-ttl-5m".into(),
+            Some("msg5".into()),
+            "session:msg5".into(),
+            10,
+            5,
+            0,
+            40,
+            200,
+        ));
+
+        let body_1h = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "s", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        assert!(enqueue_create(
+            db.clone(),
+            sample_row_with("d-ttl-1h", &SCOPE_A, "claude-sonnet-4-20250514", body_1h),
+        ));
+        assert!(enqueue_usage_finalize(
+            db.clone(),
+            "d-ttl-1h".into(),
+            Some("msg1".into()),
+            "session:msg1".into(),
+            10,
+            5,
+            0,
+            40,
+            200,
+        ));
+        assert!(writer_for(db.clone()).flush(Duration::from_secs(5)).await);
+
+        let got5 = db.autotier_get_decision("d-ttl-5m").unwrap().unwrap();
+        assert_eq!(got5.actual_cache_write_5m_tokens, Some(40));
+        assert_eq!(got5.actual_cache_write_1h_tokens, None);
+        let doc5: serde_json::Value = serde_json::from_str(&got5.cost_assumptions_json).unwrap();
+        assert_eq!(doc5["cache_write_ttl"], "5m");
+
+        let got1 = db.autotier_get_decision("d-ttl-1h").unwrap().unwrap();
+        assert_eq!(got1.actual_cache_write_5m_tokens, None);
+        assert_eq!(got1.actual_cache_write_1h_tokens, Some(40));
+        let doc1: serde_json::Value = serde_json::from_str(&got1.cost_assumptions_json).unwrap();
+        assert_eq!(doc1["cache_write_ttl"], "1h");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn historical_price_update_does_not_rewrite_decision_cost() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+        let row = sample_row("d-freeze", &SCOPE_A);
+        assert!(enqueue_create(db.clone(), row));
+        assert!(enqueue_finalize(
+            db.clone(),
+            FinalizeEvent {
+                decision_id: "d-freeze".into(),
+                completed_at: 1,
+                actual_outbound_model: Some("claude-sonnet-4-20250514".into()),
+                actual_outbound_provider: Some("p".into()),
+                ..Default::default()
+            }
+        ));
+        assert!(writer_for(db.clone()).flush(Duration::from_secs(5)).await);
+        let before = db.autotier_get_decision("d-freeze").unwrap().unwrap();
+        let snap_before: serde_json::Value =
+            serde_json::from_str(&before.cost_assumptions_json).unwrap();
+        let frozen_input = snap_before["baseline"]["input_per_million"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(!frozen_input.is_empty());
+
+        set_model_input_price(&db, "claude-sonnet-4-20250514", "99").unwrap();
+
+        assert!(enqueue_usage_finalize(
+            db.clone(),
+            "d-freeze".into(),
+            Some("msg_f".into()),
+            "session:msg_f".into(),
+            1000,
+            0,
+            0,
+            0,
+            200,
+        ));
+        assert!(writer_for(db.clone()).flush(Duration::from_secs(5)).await);
+        let after = db.autotier_get_decision("d-freeze").unwrap().unwrap();
+        let snap_after: serde_json::Value =
+            serde_json::from_str(&after.cost_assumptions_json).unwrap();
+        assert_eq!(
+            snap_after["baseline"]["input_per_million"].as_str(),
+            Some(frozen_input.as_str())
+        );
+        let cost = after.actual_cost_usd.expect("priced from frozen snapshot");
+        // 1000 * 3 / 1M = 0.003，不是 99/million。
+        assert_eq!(cost, "0.003");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn missing_price_leaves_actual_cost_unset() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        let db = Arc::new(Database::init().expect("init db"));
+        let body = json!({
+            "model": "no-such-autotier-model-xyz",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        assert!(enqueue_create(
+            db.clone(),
+            sample_row_with("d-noprice", &SCOPE_A, "no-such-autotier-model-xyz", body),
+        ));
+        assert!(enqueue_usage_finalize(
+            db.clone(),
+            "d-noprice".into(),
+            Some("msg_n".into()),
+            "session:msg_n".into(),
+            1000,
+            500,
+            0,
+            0,
+            200,
+        ));
+        assert!(writer_for(db.clone()).flush(Duration::from_secs(5)).await);
+        let got = db.autotier_get_decision("d-noprice").unwrap().unwrap();
+        assert_eq!(got.actual_cost_usd, None);
+        assert_eq!(got.candidate_cost_low_usd, None);
+        let doc: serde_json::Value = serde_json::from_str(&got.cost_assumptions_json).unwrap();
+        let assumptions = doc["assumptions"].as_array().unwrap();
+        assert!(assumptions
+            .iter()
+            .any(|v| v.as_str() == Some("PRICE_MISSING")));
     }
 }
