@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 
 type PricingDraft = AutotierProviderModelPricingInput;
 const NEW_ROW_KEY = "__new__";
+const EMPTY_PRICING: AutotierProviderModelPricing[] = [];
 
 const emptyDraft = (providerId: string): PricingDraft => ({
   provider_id: providerId,
@@ -92,7 +93,7 @@ function EnsureQueryClient({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: { retry: false, gcTime: 0 },
-          mutations: { retry: false },
+          mutations: { retry: false, gcTime: 0 },
         },
       }),
   );
@@ -127,7 +128,7 @@ function AutotierProviderPricingPanelInner({
   const [newRowOpen, setNewRowOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const rows = pricingQuery.data ?? [];
+  const rows = pricingQuery.data ?? EMPTY_PRICING;
   const rowKeys = useMemo(() => rows.map((row) => row.model_id), [rows]);
 
   useEffect(() => {
