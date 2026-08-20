@@ -92,7 +92,18 @@ fn redact_header(name: &str) -> bool {
     )
 }
 
+/// Mock 上游生成的 message id / tool id；Off vs Shadow 对比时允许不同。
+pub const WHITELIST_CLIENT_BODY_FIELDS: &[&str] = &["id"];
+
+pub fn diff_json_parity(prefix: &str, left: &Value, right: &Value) -> Vec<Diff> {
+    diff_json_with_skip(prefix, left, right, WHITELIST_CLIENT_BODY_FIELDS)
+}
+
 pub fn diff_json(prefix: &str, left: &Value, right: &Value) -> Vec<Diff> {
+    diff_json_with_skip(prefix, left, right, &[])
+}
+
+fn diff_json_with_skip(prefix: &str, left: &Value, right: &Value, skip_keys: &[&str]) -> Vec<Diff> {
     if left == right {
         return Vec::new();
     }
@@ -103,9 +114,14 @@ pub fn diff_json(prefix: &str, left: &Value, right: &Value) -> Vec<Diff> {
             keys.sort();
             keys.dedup();
             for key in keys {
+                if skip_keys.iter().any(|s| *s == key.as_str()) {
+                    continue;
+                }
                 let path = format!("{prefix}.{key}");
                 match (a.get(key), b.get(key)) {
-                    (Some(lv), Some(rv)) => diffs.extend(diff_json(&path, lv, rv)),
+                    (Some(lv), Some(rv)) => {
+                        diffs.extend(diff_json_with_skip(&path, lv, rv, skip_keys))
+                    }
                     (Some(lv), None) => diffs.push(Diff::new(&path, compact(lv), "<missing>")),
                     (None, Some(rv)) => diffs.push(Diff::new(&path, "<missing>", compact(rv))),
                     (None, None) => {}
@@ -117,7 +133,7 @@ pub fn diff_json(prefix: &str, left: &Value, right: &Value) -> Vec<Diff> {
             .iter()
             .zip(b.iter())
             .enumerate()
-            .flat_map(|(i, (lv, rv))| diff_json(&format!("{prefix}[{i}]"), lv, rv))
+            .flat_map(|(i, (lv, rv))| diff_json_with_skip(&format!("{prefix}[{i}]"), lv, rv, skip_keys))
             .collect(),
         _ => vec![Diff::new(prefix, compact(left), compact(right))],
     }

@@ -27,8 +27,8 @@ use axum::routing::post;
 use axum::Router;
 use cc_switch_lib::{AutotierRoutingConfigDto, Database, Provider};
 use parity_diff::{
-    diff_headers, diff_json, diff_str, format_report, Diff, WHITELIST_CLIENT_HEADERS,
-    WHITELIST_UPSTREAM_HEADERS, WHITELIST_USAGE_FIELDS,
+    diff_headers, diff_json, diff_json_parity, diff_str, format_report, Diff,
+    WHITELIST_CLIENT_HEADERS, WHITELIST_UPSTREAM_HEADERS, WHITELIST_USAGE_FIELDS,
 };
 use serde_json::{json, Value};
 use support::{create_test_state, ensure_test_home, reset_test_fs, test_mutex};
@@ -485,7 +485,7 @@ fn diff_client_body(left: &ClientCapture, right: &ClientCapture) -> Vec<Diff> {
     let l_json = serde_json::from_str::<Value>(&left.body_text).ok();
     let r_json = serde_json::from_str::<Value>(&right.body_text).ok();
     match (l_json, r_json) {
-        (Some(a), Some(b)) => diff_json("client.body", &a, &b),
+        (Some(a), Some(b)) => diff_json_parity("client.body", &a, &b),
         _ => {
             let mut diffs = diff_str("client.body", &left.body_text, &right.body_text, &[]);
             let le = sse_events(&left.body_text);
