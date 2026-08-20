@@ -20,7 +20,7 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
-use cc_switch_lib::{AutotierDecisionRow, AutotierRoutingConfigDto, Database, Provider};
+use autotier_lib::{AutotierDecisionRow, AutotierRoutingConfigDto, Database, Provider};
 use serde_json::{json, Value};
 use support::{create_test_state, ensure_test_home, reset_test_fs, test_mutex};
 

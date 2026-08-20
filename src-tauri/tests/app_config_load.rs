@@ -1,17 +1,17 @@
 use std::fs;
 use std::path::PathBuf;
 
-use cc_switch_lib::{AppError, MultiAppConfig};
+use autotier_lib::{AppError, MultiAppConfig};
 
 mod support;
 use support::{ensure_test_home, reset_test_fs, test_mutex};
 
 fn cfg_path() -> PathBuf {
-    cc_switch_lib::app_config_file_path()
+    autotier_lib::app_config_file_path()
 }
 
 fn cfg_backup_path() -> PathBuf {
-    cc_switch_lib::get_app_config_dir().join("config.json.bak")
+    autotier_lib::get_app_config_dir().join("config.json.bak")
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn load_valid_v2_config_succeeds() {
     let loaded = MultiAppConfig::load().expect("v2 should load successfully");
     assert_eq!(loaded.version, 2);
     assert!(loaded
-        .get_manager(&cc_switch_lib::AppType::Claude)
+        .get_manager(&autotier_lib::AppType::Claude)
         .is_some());
-    assert!(loaded.get_manager(&cc_switch_lib::AppType::Codex).is_some());
+    assert!(loaded.get_manager(&autotier_lib::AppType::Codex).is_some());
 }
