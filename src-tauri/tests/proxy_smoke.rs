@@ -350,7 +350,7 @@ async fn proxy_smoke_claude_request_chain() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let home = ensure_test_home().to_path_buf();
-    let db_path = home.join(".cc-switch").join("cc-switch.db");
+    let db_path = home.join(".autotier").join("autotier.db");
 
     let state = create_test_state().expect("create test state");
     let db = state.db.clone();

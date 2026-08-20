@@ -18,6 +18,7 @@ export const autotierKeys = {
     ["autotier", "decisions", filter] as const,
   decisionDetail: (decisionId: string) =>
     ["autotier", "decision", decisionId] as const,
+  legacy: ["autotier", "legacy"] as const,
 };
 
 export function useAutotierRoutingConfig(enabled = true) {
@@ -132,6 +133,42 @@ export function useUpsertAutotierDecisionLabel() {
       queryClient.invalidateQueries({
         queryKey: autotierKeys.decisionDetail(label.decision_id),
       });
+    },
+  });
+}
+
+export function useAutotierLegacyStatus(enabled = true) {
+  return useQuery({
+    queryKey: autotierKeys.legacy,
+    queryFn: () => autotierApi.detectLegacyData(),
+    enabled,
+  });
+}
+
+export function useExportAutotierDecisions() {
+  return useMutation({
+    mutationFn: (outputDir: string) => autotierApi.exportDecisions(outputDir),
+  });
+}
+
+export function useReplayAutotierExport() {
+  return useMutation({
+    mutationFn: (exportDir: string) => autotierApi.replayExport(exportDir),
+  });
+}
+
+export function useEvaluateAutotierExport() {
+  return useMutation({
+    mutationFn: (exportDir: string) => autotierApi.evaluateExport(exportDir),
+  });
+}
+
+export function useImportAutotierLegacyData() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => autotierApi.importLegacyData(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: autotierKeys.legacy });
     },
   });
 }

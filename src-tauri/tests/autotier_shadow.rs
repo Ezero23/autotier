@@ -299,7 +299,7 @@ fn set_autotier_mode(db: &Database, mode: &str) {
 
 fn db_file_path() -> std::path::PathBuf {
     let home = ensure_test_home().to_path_buf();
-    home.join(".cc-switch").join("cc-switch.db")
+    home.join(".autotier").join("autotier.db")
 }
 
 fn assert_shadow_unmutated(row: &AutotierDecisionRow) {

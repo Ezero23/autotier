@@ -25,6 +25,8 @@ import {
 import {
   useAutotierRoutingConfig,
   useClearAutotierDecisions,
+  useImportAutotierLegacyData,
+  useAutotierLegacyStatus,
   usePruneAutotierDecisions,
   useSaveAutotierRoutingConfig,
 } from "@/lib/query/autotier";
@@ -125,6 +127,8 @@ function AutotierRoutingSettingsPanelInner() {
   const saveConfig = useSaveAutotierRoutingConfig();
   const clearDecisions = useClearAutotierDecisions();
   const pruneDecisions = usePruneAutotierDecisions();
+  const legacyStatus = useAutotierLegacyStatus();
+  const importLegacy = useImportAutotierLegacyData();
   const [baseMode, setBaseMode] = useState<AutotierModeV01>("shadow");
   const [retentionDays, setRetentionDays] = useState<AutotierRetentionDays>(30);
   const [forcedCandidate, setForcedCandidate] =
@@ -190,6 +194,22 @@ function AutotierRoutingSettingsPanelInner() {
     }
   };
 
+  const handleImportLegacy = async () => {
+    try {
+      const result = await importLegacy.mutateAsync();
+      toast.success(
+        t("autotier.routing.legacyImportSuccess", {
+          path: result.imported_to,
+        }),
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const showLegacyImport =
+    legacyStatus.data?.legacy_db_exists && !legacyStatus.data?.autotier_db_exists;
+
   const isLoading = configQuery.isLoading;
   const loadError = configQuery.error;
 
@@ -217,6 +237,26 @@ function AutotierRoutingSettingsPanelInner() {
             </AlertDescription>
           </Alert>
         )}
+
+        {showLegacyImport ? (
+          <Alert data-testid="autotier-legacy-import-banner">
+            <AlertTitle>{t("autotier.routing.legacyImportTitle")}</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>{t("autotier.routing.legacyImportBody")}</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={importLegacy.isPending}
+                onClick={() => void handleImportLegacy()}
+              >
+                {importLegacy.isPending
+                  ? t("autotier.routing.legacyImportRunning")
+                  : t("autotier.routing.legacyImportAction")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         {isLoading ? (
           <div

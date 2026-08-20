@@ -199,40 +199,64 @@ pub fn get_claude_settings_path() -> PathBuf {
     settings
 }
 
-/// 获取应用配置目录路径 (~/.cc-switch)
+/// 获取应用配置目录路径。
+///
+/// AutoTier 默认 `~/.autotier`。若尚未导入且 legacy `~/.cc-switch/cc-switch.db`
+/// 仍存在，则继续读取 legacy 目录，避免升级后“数据消失”。
 pub fn get_app_config_dir() -> PathBuf {
     if let Some(custom) = crate::app_store::get_app_config_dir_override() {
         return custom;
     }
 
-    let default_dir = get_home_dir().join(".cc-switch");
+    let home = get_home_dir();
+    let autotier_dir = home.join(".autotier");
+    let legacy_dir = home.join(".cc-switch");
+
+    if autotier_dir.join("autotier.db").exists() {
+        return autotier_dir;
+    }
 
     // 兼容 v3.10.3：当用户环境存在 `HOME` 且与真实用户目录不同，
     // v3.10.3 可能在 `HOME/.cc-switch/` 下创建/使用了数据库。
-    // 这里仅在“默认位置没有数据库”时回退到旧位置，避免再次出现“供应商消失”问题，
-    // 同时也避免新安装因为 `HOME` 被设置而写入非预期路径。
     #[cfg(windows)]
     {
-        let default_db = default_dir.join("cc-switch.db");
-        if !default_db.exists() {
+        if !legacy_dir.join("cc-switch.db").exists() {
             if let Ok(home_env) = std::env::var("HOME") {
                 let trimmed = home_env.trim();
                 if !trimmed.is_empty() {
-                    let legacy_dir = PathBuf::from(trimmed).join(".cc-switch");
-                    if legacy_dir.join("cc-switch.db").exists() {
+                    let legacy_home_dir = PathBuf::from(trimmed).join(".cc-switch");
+                    if legacy_home_dir.join("cc-switch.db").exists() {
                         log::info!(
                             "Detected v3.10.3 legacy database at {}, using it instead of {}",
-                            legacy_dir.display(),
-                            default_dir.display()
+                            legacy_home_dir.display(),
+                            legacy_dir.display()
                         );
-                        return legacy_dir;
+                        return legacy_home_dir;
                     }
                 }
             }
         }
     }
 
-    default_dir
+    if legacy_dir.join("cc-switch.db").exists() {
+        return legacy_dir;
+    }
+
+    autotier_dir
+}
+
+/// SQLite 数据库路径：AutoTier 使用 `autotier.db`，legacy 目录仍用 `cc-switch.db`。
+pub fn get_app_database_path() -> PathBuf {
+    let dir = get_app_config_dir();
+    let file_name = if dir
+        .file_name()
+        .is_some_and(|name| name == ".cc-switch")
+    {
+        "cc-switch.db"
+    } else {
+        "autotier.db"
+    };
+    dir.join(file_name)
 }
 
 /// 获取应用配置文件路径
