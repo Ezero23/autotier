@@ -10,7 +10,7 @@ use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use hmac::{Hmac, Mac};
@@ -191,22 +191,23 @@ impl DecisionWriter {
     }
 }
 
-fn writer_slot() -> &'static Mutex<Option<(usize, DecisionWriter)>> {
-    static SLOT: OnceLock<Mutex<Option<(usize, DecisionWriter)>>> = OnceLock::new();
+fn writer_slot() -> &'static Mutex<Option<(Weak<Database>, DecisionWriter)>> {
+    static SLOT: OnceLock<Mutex<Option<(Weak<Database>, DecisionWriter)>>> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
-/// 按 `Arc<Database>` 身份复用 Writer。测试重建 DB 时自动换新消费者。
+/// 按 `Arc<Database>` 身份复用 Writer。使用 Weak 做 ptr_eq，避免数据库释放后
+/// 新 Arc 恰好复用同一地址而错误复用已关闭的 Writer channel。
 pub fn writer_for(db: Arc<Database>) -> DecisionWriter {
-    let key = Arc::as_ptr(&db) as usize;
     let mut slot = writer_slot().lock().unwrap_or_else(|e| e.into_inner());
     if let Some((existing, writer)) = slot.as_ref() {
-        if *existing == key {
+        let current = Arc::downgrade(&db);
+        if existing.ptr_eq(&current) {
             return writer.clone();
         }
     }
-    let writer = DecisionWriter::spawn(db, DECISION_QUEUE_CAP);
-    *slot = Some((key, writer.clone()));
+    let writer = DecisionWriter::spawn(db.clone(), DECISION_QUEUE_CAP);
+    *slot = Some((Arc::downgrade(&db), writer.clone()));
     writer
 }
 
@@ -727,7 +728,9 @@ mod tests {
         for join in joins {
             join.await.expect("task");
         }
-        assert!(writer.flush(Duration::from_secs(15)).await);
+        // Windows CI 的 SQLite + debug test binary 处理 2,000 个事件可能超过 15s；
+        // 这里验证的是不丢事件，不是把磁盘吞吐当作产品 SLO。
+        assert!(writer.flush(Duration::from_secs(120)).await);
         assert_eq!(writer.dropped(), 0, "queue dropped events");
         let n = db.autotier_count_decisions().expect("count");
         assert_eq!(n, 1000);

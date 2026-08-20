@@ -7,7 +7,11 @@ use cc_switch_lib::{update_settings, AppSettings, AppState, Database, MultiAppCo
 pub fn ensure_test_home() -> &'static Path {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
-        let base = std::env::temp_dir().join("cc-switch-test-home");
+        let base = std::env::var_os("CC_SWITCH_TEST_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("cc-switch-test-home-{}", std::process::id()))
+            });
         if base.exists() {
             let _ = std::fs::remove_dir_all(&base);
         }
@@ -62,7 +66,8 @@ pub fn enable_codex_official_auth_preservation() {
     .expect("enable Codex official auth preservation");
 }
 
-/// 全局互斥锁，避免多测试并发写入相同的 HOME 目录。
+/// 进程内互斥锁，避免同一个测试 binary 内并发写入 HOME 目录。
+/// 不依赖它跨 binary 同步；普通测试 HOME 已按进程隔离，WSL2 契约只运行一个 lib test binary。
 pub fn test_mutex() -> &'static Mutex<()> {
     static MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     MUTEX.get_or_init(|| Mutex::new(()))
