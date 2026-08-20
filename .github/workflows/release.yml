@@ -123,15 +123,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare Tauri signing key
+        id: tauri_signing
         shell: bash
         run: |
-          # 调试：检查 Secret 是否存在
           if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "❌ TAURI_SIGNING_PRIVATE_KEY Secret 为空或不存在" >&2
-            echo "请检查 GitHub 仓库 Settings > Secrets and variables > Actions" >&2
-            exit 1
+            echo "⚠️ TAURI_SIGNING_PRIVATE_KEY not set — building unsigned (no updater .sig artifacts)"
+            echo "signing_enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          
+          echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
+
           RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
           # 目标：提供正确的私钥“文件路径”给 Tauri CLI，避免内容解码歧义
           KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
@@ -178,8 +179,21 @@ jobs:
           fi
           echo "✅ Tauri signing key prepared"
 
+      - name: Disable updater artifacts for unsigned builds
+        if: steps.tauri_signing.outputs.signing_enabled != 'true'
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'src-tauri/tauri.conf.json';
+          const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+          j.bundle.createUpdaterArtifacts = false;
+          fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+          console.log('createUpdaterArtifacts=false for unsigned CI build');
+          NODE
+
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true' && secrets.APPLE_CERTIFICATE != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -269,12 +283,13 @@ jobs:
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          SIGNING_ENABLED: ${{ steps.tauri_signing.outputs.signing_enabled }}
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          VERSION="${GITHUB_REF_NAME}"
 
-          # Locate bundle artifacts
           TAR_GZ=""; APP_PATH=""
           for path in \
             "src-tauri/target/universal-apple-darwin/release/bundle/macos" \
@@ -287,62 +302,58 @@ jobs:
             fi
           done
 
-          if [ -z "$TAR_GZ" ]; then
-            echo "❌ No macOS .tar.gz updater artifact found" >&2
-            exit 1
-          fi
           if [ -z "$APP_PATH" ]; then
             echo "❌ No .app found" >&2
             exit 1
           fi
 
-          # Staple notarization ticket to .app (Tauri already notarized it)
-          xcrun stapler staple "$APP_PATH"
-          echo "✅ .app stapled"
+          if [ "$SIGNING_ENABLED" = "true" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            xcrun stapler staple "$APP_PATH" || echo "⚠️ stapler skipped/failed"
+          else
+            echo "⚠️ Unsigned macOS build — skipping stapler"
+          fi
 
-          # 1) Collect .tar.gz (updater artifact)
-          NEW_TAR_GZ="CC-Switch-${VERSION}-macOS.tar.gz"
-          cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
-          [ -f "$TAR_GZ.sig" ] && cp "$TAR_GZ.sig" "release-assets/$NEW_TAR_GZ.sig" || echo ".sig for macOS not found yet"
-          echo "macOS updater artifact copied: $NEW_TAR_GZ"
-
-          # 2) Collect .app as zip
-          NEW_ZIP="CC-Switch-${VERSION}-macOS.zip"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
-          echo "macOS zip ready: $NEW_ZIP"
-
-          # 3) Create styled DMG with create-dmg (Tauri's built-in DMG styling doesn't work on CI)
-          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            echo "❌ APPLE_SIGNING_IDENTITY is missing before DMG creation" >&2
+          if [ -n "$TAR_GZ" ]; then
+            NEW_TAR_GZ="AutoTier-${VERSION}-macOS.tar.gz"
+            cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
+            [ -f "$TAR_GZ.sig" ] && cp "$TAR_GZ.sig" "release-assets/$NEW_TAR_GZ.sig" || true
+          elif [ "$SIGNING_ENABLED" = "true" ]; then
+            echo "❌ No macOS .tar.gz updater artifact found" >&2
             exit 1
           fi
 
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
-          NEW_DMG="CC-Switch-${VERSION}-macOS.dmg"
-          DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
-          rm -rf "$DMG_STAGE_DIR"
-          mkdir -p "$DMG_STAGE_DIR"
-          ditto "$APP_PATH" "$DMG_STAGE_DIR/CC Switch.app"
+          NEW_ZIP="AutoTier-${VERSION}-macOS.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
+          echo "macOS zip ready: $NEW_ZIP"
 
-          create-dmg \
-            --volname "CC Switch" \
-            --background "src-tauri/icons/dmg-background.png" \
-            --window-size 660 400 \
-            --window-pos 200 120 \
-            --icon-size 80 \
-            --icon "CC Switch.app" 180 220 \
-            --hide-extension "CC Switch.app" \
-            --app-drop-link 480 220 \
-            --codesign "$APPLE_SIGNING_IDENTITY" \
-            --no-internet-enable \
-            "release-assets/$NEW_DMG" \
-            "$DMG_STAGE_DIR"
-
-          rm -rf "$DMG_STAGE_DIR"
-          echo "✅ Styled DMG created: $NEW_DMG"
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
+            NEW_DMG="AutoTier-${VERSION}-macOS.dmg"
+            DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
+            rm -rf "$DMG_STAGE_DIR"
+            mkdir -p "$DMG_STAGE_DIR"
+            ditto "$APP_PATH" "$DMG_STAGE_DIR/AutoTier.app"
+            create-dmg \
+              --volname "AutoTier" \
+              --background "src-tauri/icons/dmg-background.png" \
+              --window-size 660 400 \
+              --window-pos 200 120 \
+              --icon-size 80 \
+              --icon "AutoTier.app" 180 220 \
+              --hide-extension "AutoTier.app" \
+              --app-drop-link 480 220 \
+              --codesign "$APPLE_SIGNING_IDENTITY" \
+              --no-internet-enable \
+              "release-assets/$NEW_DMG" \
+              "$DMG_STAGE_DIR"
+            rm -rf "$DMG_STAGE_DIR"
+            echo "✅ Styled DMG created: $NEW_DMG"
+          else
+            echo "⚠️ Skipping DMG — no Apple signing identity"
+          fi
 
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && secrets.APPLE_ID != '' && secrets.APPLE_CERTIFICATE != ''
         shell: bash
         timeout-minutes: 30
         env:
@@ -384,7 +395,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -448,7 +459,7 @@ jobs:
             $msi = Get-ChildItem -Path (Join-Path $targetRoot 'bundle') -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
           }
           if ($null -ne $msi) {
-            $dest = "CC-Switch-$VERSION-Windows$assetSuffix.msi"
+            $dest = "AutoTier-$VERSION-Windows$assetSuffix.msi"
             Copy-Item $msi.FullName (Join-Path release-assets $dest)
             Write-Host "Installer copied: $dest"
             $sigPath = "$($msi.FullName).sig"
@@ -477,7 +488,7 @@ jobs:
           }
           $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if ($null -ne $exePath) {
-            $portableDir = 'release-assets/CC-Switch-Portable'
+            $portableDir = 'release-assets/AutoTier-Portable'
             New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
             Copy-Item $exePath $portableDir
             $portableIniPath = Join-Path $portableDir 'portable.ini'
@@ -494,10 +505,10 @@ jobs:
               )
             }
             $portableContent | Set-Content -Path $portableIniPath -Encoding UTF8
-            $portableZip = "release-assets/CC-Switch-$VERSION-Windows$assetSuffix-Portable.zip"
+            $portableZip = "release-assets/AutoTier-$VERSION-Windows$assetSuffix-Portable.zip"
             Compress-Archive -Path "$portableDir/*" -DestinationPath $portableZip -Force
             Remove-Item -Recurse -Force $portableDir
-            Write-Host "Windows portable zip created: CC-Switch-$VERSION-Windows$assetSuffix-Portable.zip"
+            Write-Host "Windows portable zip created: AutoTier-$VERSION-Windows$assetSuffix-Portable.zip"
           } elseif ($isArm64) {
             throw 'Portable ARM64 exe not found'
           } else {
@@ -515,7 +526,7 @@ jobs:
           # Updater artifact: AppImage（含对应 .sig）
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" | head -1 || true)
           if [ -n "$APPIMAGE" ]; then
-            NEW_APPIMAGE="CC-Switch-${VERSION}-Linux-${ARCH}.AppImage"
+            NEW_APPIMAGE="AutoTier-${VERSION}-Linux-${ARCH}.AppImage"
             cp "$APPIMAGE" "release-assets/$NEW_APPIMAGE"
             [ -f "$APPIMAGE.sig" ] && cp "$APPIMAGE.sig" "release-assets/$NEW_APPIMAGE.sig" || echo ".sig for AppImage not found"
             echo "AppImage copied: $NEW_APPIMAGE"
@@ -525,16 +536,16 @@ jobs:
           # 额外上传 .deb（用于手动安装，不参与 Updater）
           DEB=$(find src-tauri/target/release/bundle -name "*.deb" | head -1 || true)
           if [ -n "$DEB" ]; then
-            cp "$DEB" "release-assets/CC-Switch-${VERSION}-Linux-${ARCH}.deb"
-            echo "Deb package copied: CC-Switch-${VERSION}-Linux-${ARCH}.deb"
+            cp "$DEB" "release-assets/AutoTier-${VERSION}-Linux-${ARCH}.deb"
+            echo "Deb package copied: AutoTier-${VERSION}-Linux-${ARCH}.deb"
           else
             echo "No .deb found (optional)"
           fi
           # 额外上传 .rpm（用于 Fedora/RHEL/openSUSE 等，不参与 Updater）
           RPM=$(find src-tauri/target/release/bundle -name "*.rpm" | head -1 || true)
           if [ -n "$RPM" ]; then
-            cp "$RPM" "release-assets/CC-Switch-${VERSION}-Linux-${ARCH}.rpm"
-            echo "RPM package copied: CC-Switch-${VERSION}-Linux-${ARCH}.rpm"
+            cp "$RPM" "release-assets/AutoTier-${VERSION}-Linux-${ARCH}.rpm"
+            echo "RPM package copied: AutoTier-${VERSION}-Linux-${ARCH}.rpm"
           else
             echo "No .rpm found (optional)"
           fi
@@ -600,27 +611,32 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          name: CC Switch ${{ github.ref_name }}
-          prerelease: true
+          name: AutoTier ${{ github.ref_name }}
+          prerelease: false
           body: |
-            ## CC Switch ${{ github.ref_name }}
+            ## AutoTier ${{ github.ref_name }}
 
-            🌐 **Only Official Website / 唯一官方网站 / 唯一の公式サイト**: [ccswitch.io](https://ccswitch.io)
+            Local-first **Shadow routing observatory** — observe candidate decisions without changing outbound model or provider.
 
-            Claude Code 供应商切换工具
+            📖 Release notes: [English](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/v0.1.0-en.md) · [中文](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/v0.1.0-zh.md)
 
-            ### 下载
+            ### Downloads
 
-            - **macOS**: `CC-Switch-${{ github.ref_name }}-macOS.dmg`（推荐）或 `CC-Switch-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `CC-Switch-${{ github.ref_name }}-Windows.msi`（安装版）或 `CC-Switch-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
-            - **Windows (ARM64)**: `CC-Switch-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `CC-Switch-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
-            - **Linux (x86_64)**: `CC-Switch-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `CC-Switch-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
+            - **macOS**: `AutoTier-${{ github.ref_name }}-macOS.dmg` (recommended) or `.zip`
+            - **Windows (x64)**: `AutoTier-${{ github.ref_name }}-Windows.msi` or `-Portable.zip`
+            - **Windows (ARM64)**: `AutoTier-${{ github.ref_name }}-Windows-arm64.msi` or `-Portable.zip`
+            - **Linux (x64)**: `AutoTier-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
+            - **Linux (ARM64)**: `AutoTier-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 
-            > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
+            > Unsigned builds omit `.sig` updater artifacts until `TAURI_SIGNING_PRIVATE_KEY` is configured in repo secrets.
 
-            ---
-            macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
+            ### Shadow invariants (v0.1)
+
+            ```
+            autotier_mutated_request == false
+            actual_outbound_model    == baseline_outbound_model
+            actual_outbound_provider == baseline_outbound_provider
+            ```
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
