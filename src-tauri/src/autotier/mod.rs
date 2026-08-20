@@ -23,6 +23,7 @@
 
 mod cost;
 mod decision;
+pub mod export;
 mod extractor;
 mod features;
 mod observer;
@@ -41,6 +42,10 @@ pub use observer::{build_shadow_row, is_shadow_enabled, shadow_config_for_observ
 pub use writer::{
     enqueue_create, enqueue_finalize, enqueue_usage_finalize, hash_session_id,
     load_or_create_session_secret, writer_for, DecisionEvent, DecisionWriter, FinalizeEvent,
+};
+pub use export::{
+    export_bundle, scan_export_secrets, validate_export_dir, ExportBundleResult, ExportManifest,
+    EXPORT_SCHEMA_VERSION,
 };
 
 use crate::app_config::AppType;
