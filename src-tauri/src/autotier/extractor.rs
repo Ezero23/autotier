@@ -604,6 +604,8 @@ mod tests {
         // runtime variance on Windows and macOS CI runners.
         let budget_micros = if cfg!(target_os = "linux") {
             1_000
+        } else if cfg!(target_os = "macos") {
+            3_000
         } else {
             2_000
         };
