@@ -29,6 +29,125 @@ export type AutotierCapabilityStatus =
 export const AUTOTIER_RETENTION_DAYS = [7, 14, 30, 90] as const;
 export type AutotierRetentionDays = (typeof AUTOTIER_RETENTION_DAYS)[number];
 
+export const AUTOTIER_DECISION_LABELS = [
+  "correct",
+  "should_be_stronger",
+  "could_be_cheaper",
+  "unsure",
+] as const;
+export type AutotierDecisionLabel = (typeof AUTOTIER_DECISION_LABELS)[number];
+
+export const AUTOTIER_DECISION_LABEL_REASONS = [
+  "tool_failure_risk",
+  "long_context",
+  "architecture_reasoning",
+  "simple_formatting",
+  "background_task",
+  "wrong_provider_capability",
+  "cache_risk",
+  "other",
+] as const;
+export type AutotierDecisionLabelReason =
+  (typeof AUTOTIER_DECISION_LABEL_REASONS)[number];
+
+export interface AutotierDecisionCompletionStatus {
+  decision_complete: boolean;
+  usage_linked: boolean;
+  missing_fields: string[];
+}
+
+export interface AutotierDecisionListItem {
+  decision_id: string;
+  created_at: number;
+  completed_at: number | null;
+  app_type: string;
+  session_id_hash: string;
+  mode: string;
+  client_requested_model: string;
+  initial_selected_provider: string | null;
+  baseline_outbound_model: string | null;
+  baseline_outbound_provider: string | null;
+  recommended_slot: string | null;
+  candidate_model: string | null;
+  candidate_provider: string | null;
+  actual_outbound_model: string | null;
+  actual_outbound_provider: string | null;
+  complexity_score: number;
+  confidence: number;
+  safe_to_execute: boolean;
+  is_complete: boolean;
+  error_code: string | null;
+  user_label: string | null;
+  completion: AutotierDecisionCompletionStatus;
+}
+
+export interface AutotierDecisionListPage {
+  items: AutotierDecisionListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AutotierDecisionLabelRecord {
+  decision_id: string;
+  label: string;
+  reason: string | null;
+  note: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AutotierDecisionDetail
+  extends Omit<AutotierDecisionListItem, "user_label"> {
+  autotier_mutated_request: boolean;
+  upstream_message_id: string | null;
+  usage_request_id: string | null;
+  reason_codes_json: string;
+  unsafe_reasons_json: string;
+  feature_json: string;
+  feature_version: string;
+  classifier_version: string;
+  policy_version: string;
+  actual_input_tokens: number | null;
+  actual_output_tokens: number | null;
+  actual_cache_read_tokens: number | null;
+  actual_cache_write_5m_tokens: number | null;
+  actual_cache_write_1h_tokens: number | null;
+  actual_cost_usd: string | null;
+  candidate_cost_low_usd: string | null;
+  candidate_cost_base_usd: string | null;
+  candidate_cost_high_usd: string | null;
+  cost_assumptions_json: string;
+  status_code: number | null;
+  outcome: string | null;
+  retry_count: number;
+  fallback_count: number;
+  user_label: AutotierDecisionLabelRecord | null;
+}
+
+export interface AutotierDecisionQueryFilter {
+  since_ms?: number;
+  until_ms?: number;
+  session_id_hash?: string;
+  app_type?: string;
+  client_requested_model?: string;
+  recommended_slot?: string;
+  candidate_model?: string;
+  actual_outbound_model?: string;
+  is_complete?: boolean;
+  label?: string;
+  has_label?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface UpsertDecisionLabelInput {
+  decision_id: string;
+  label: AutotierDecisionLabel;
+  reason?: AutotierDecisionLabelReason | null;
+  note?: string | null;
+}
+
 export type AutotierCommandErrorCode =
   | "illegal_mode"
   | "illegal_retention"
@@ -131,6 +250,32 @@ export function displaySlot(slot: string): AutotierSlot | "unknown" {
     : "unknown";
 }
 
+export function displayDecisionLabel(
+  label: string,
+): AutotierDecisionLabel | "unknown" {
+  return (AUTOTIER_DECISION_LABELS as readonly string[]).includes(label)
+    ? (label as AutotierDecisionLabel)
+    : "unknown";
+}
+
+export function displayDecisionLabelReason(
+  reason: string,
+): AutotierDecisionLabelReason | "unknown" {
+  return (AUTOTIER_DECISION_LABEL_REASONS as readonly string[]).includes(reason)
+    ? (reason as AutotierDecisionLabelReason)
+    : "unknown";
+}
+
+export function parseJsonStringArray(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return [];
+  }
+}
+
 export function omitSecretFields<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => omitSecretFields(item)) as T;
@@ -200,5 +345,27 @@ export const autotierApi = {
 
   pruneDecisions(retentionDays?: AutotierRetentionDays): Promise<number> {
     return invokeAutotier("autotier_prune_decisions", { retentionDays });
+  },
+
+  queryDecisions(
+    filter: AutotierDecisionQueryFilter,
+  ): Promise<AutotierDecisionListPage> {
+    return invokeAutotier("autotier_query_decisions", { filter });
+  },
+
+  getDecisionDetail(decisionId: string): Promise<AutotierDecisionDetail | null> {
+    return invokeAutotier("autotier_get_decision_detail", { decisionId });
+  },
+
+  upsertDecisionLabel(
+    input: UpsertDecisionLabelInput,
+  ): Promise<AutotierDecisionLabelRecord> {
+    return invokeAutotier("autotier_upsert_decision_label", { input });
+  },
+
+  getDecisionLabel(
+    decisionId: string,
+  ): Promise<AutotierDecisionLabelRecord | null> {
+    return invokeAutotier("autotier_get_decision_label", { decisionId });
   },
 };

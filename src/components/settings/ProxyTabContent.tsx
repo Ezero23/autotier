@@ -16,6 +16,7 @@ import { FailoverQueueManager } from "@/components/proxy/FailoverQueueManager";
 import { RectifierConfigPanel } from "@/components/settings/RectifierConfigPanel";
 import { GlobalProxySettings } from "@/components/settings/GlobalProxySettings";
 import { AutotierRoutingSettingsPanel } from "@/components/autotier/AutotierRoutingSettingsPanel";
+import { AutotierDecisionsPanel } from "@/components/autotier/AutotierDecisionsPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ToggleRow } from "@/components/ui/toggle-row";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
@@ -288,6 +289,28 @@ export function ProxyTabContent({
           </AccordionTrigger>
           <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
             <AutotierRoutingSettingsPanel />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem
+          value="autotierDecisions"
+          className="rounded-xl glass-card overflow-hidden"
+        >
+          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+            <div className="flex items-center gap-3">
+              <Route className="h-5 w-5 text-violet-500" />
+              <div className="text-left">
+                <h3 className="text-base font-semibold">
+                  {t("autotier.decisions.title")}
+                </h3>
+                <p className="text-sm text-muted-foreground font-normal">
+                  {t("autotier.decisions.subtitle")}
+                </p>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+            <AutotierDecisionsPanel />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
