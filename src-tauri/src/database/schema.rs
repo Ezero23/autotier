@@ -243,6 +243,31 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // Provider-specific price snapshots take precedence over the global model table.
+        // Existing databases receive this table idempotently without a destructive migration.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS provider_model_pricing (
+                provider_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                input_cost_per_million TEXT NOT NULL,
+                output_cost_per_million TEXT NOT NULL,
+                cache_read_cost_per_million TEXT NOT NULL DEFAULT '0',
+                cache_creation_cost_per_million TEXT NOT NULL DEFAULT '0',
+                price_source TEXT NOT NULL DEFAULT 'provider_snapshot',
+                observed_at INTEGER NOT NULL,
+                PRIMARY KEY (provider_id, model_id)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_provider_model_pricing_model
+             ON provider_model_pricing(model_id, provider_id)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         // 12. Stream Check Logs 表
         conn.execute("CREATE TABLE IF NOT EXISTS stream_check_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT, provider_id TEXT NOT NULL, provider_name TEXT NOT NULL,

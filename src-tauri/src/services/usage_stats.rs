@@ -2042,6 +2042,37 @@ pub(crate) fn find_model_pricing(conn: &Connection, model_id: &str) -> Option<Mo
         })
 }
 
+pub(crate) fn find_provider_model_pricing_row(
+    conn: &Connection,
+    provider_id: Option<&str>,
+    model_id: &str,
+) -> Result<Option<(String, String, String, String)>, AppError> {
+    let provider_id = provider_id.map(str::trim).filter(|id| !id.is_empty());
+    let candidates = model_pricing_candidates(model_id);
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(provider_id) = provider_id {
+        for candidate in &candidates {
+            if let Some(row) = query_provider_model_pricing_exact(conn, provider_id, candidate)? {
+                return Ok(Some(row));
+            }
+        }
+        for candidate in &candidates {
+            if should_try_pricing_prefix_match(candidate) {
+                if let Some(row) =
+                    query_provider_model_pricing_prefix(conn, provider_id, candidate)?
+                {
+                    return Ok(Some(row));
+                }
+            }
+        }
+    }
+
+    find_model_pricing_row(conn, model_id)
+}
+
 pub(crate) fn find_model_pricing_row(
     conn: &Connection,
     model_id: &str,
@@ -2095,6 +2126,57 @@ fn log_pricing_scope_matches(log: &RequestLogDetail, target_candidates: &[String
 pub(crate) fn is_placeholder_pricing_model(model_id: &str) -> bool {
     let normalized = model_id.trim().to_ascii_lowercase();
     normalized.is_empty() || matches!(normalized.as_str(), "unknown" | "null" | "none")
+}
+
+fn query_provider_model_pricing_exact(
+    conn: &Connection,
+    provider_id: &str,
+    model_id: &str,
+) -> Result<Option<(String, String, String, String)>, AppError> {
+    conn.query_row(
+        "SELECT input_cost_per_million, output_cost_per_million,
+                cache_read_cost_per_million, cache_creation_cost_per_million
+         FROM provider_model_pricing
+         WHERE provider_id = ?1 AND model_id = ?2",
+        params![provider_id, model_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        },
+    )
+    .optional()
+    .map_err(|e| AppError::Database(format!("查询 Provider 模型定价失败: {e}")))
+}
+
+fn query_provider_model_pricing_prefix(
+    conn: &Connection,
+    provider_id: &str,
+    model_id: &str,
+) -> Result<Option<(String, String, String, String)>, AppError> {
+    let pattern = format!("{model_id}-%");
+    conn.query_row(
+        "SELECT input_cost_per_million, output_cost_per_million,
+                cache_read_cost_per_million, cache_creation_cost_per_million
+         FROM provider_model_pricing
+         WHERE provider_id = ?1 AND model_id LIKE ?2
+         ORDER BY LENGTH(model_id) ASC
+         LIMIT 1",
+        params![provider_id, pattern],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        },
+    )
+    .optional()
+    .map_err(|e| AppError::Database(format!("查询 Provider 模型前缀定价失败: {e}")))
 }
 
 fn query_model_pricing_exact(
@@ -4213,6 +4295,40 @@ mod tests {
         assert_eq!(input, "0.84");
         assert_eq!(output, "4.2");
 
+        Ok(())
+    }
+
+    #[test]
+    fn provider_pricing_overrides_global_and_falls_back() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let conn = lock_conn!(db.conn);
+        conn.execute(
+            "INSERT OR REPLACE INTO model_pricing (
+                model_id, display_name, input_cost_per_million, output_cost_per_million,
+                cache_read_cost_per_million, cache_creation_cost_per_million
+            ) VALUES ('shared-model', 'Global Shared', '1', '2', '0.1', '0.2')",
+            [],
+        )?;
+        conn.execute(
+            "INSERT OR REPLACE INTO provider_model_pricing (
+                provider_id, model_id, display_name, input_cost_per_million,
+                output_cost_per_million, cache_read_cost_per_million,
+                cache_creation_cost_per_million, price_source, observed_at
+            ) VALUES ('provider-a', 'shared-model', 'Provider A Shared', '9', '18', '0.9', '1.8', 'test', 1)",
+            [],
+        )?;
+
+        let provider_price =
+            find_provider_model_pricing_row(&conn, Some("provider-a"), "shared-model")?
+                .expect("provider snapshot");
+        assert_eq!(provider_price.0, "9");
+        assert_eq!(provider_price.1, "18");
+
+        let fallback_price =
+            find_provider_model_pricing_row(&conn, Some("provider-b"), "shared-model")?
+                .expect("global fallback");
+        assert_eq!(fallback_price.0, "1");
+        assert_eq!(fallback_price.1, "2");
         Ok(())
     }
 

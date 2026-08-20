@@ -504,14 +504,22 @@ fn lookup_price_leg(
     }
     let conn = lock_conn!(db.conn);
     let Some((input, output, cache_read, cache_creation)) =
-        crate::services::usage_stats::find_model_pricing_row(&conn, model_id)?
+        crate::services::usage_stats::find_provider_model_pricing_row(
+            &conn,
+            provider_id,
+            model_id,
+        )?
     else {
         return Ok(None);
     };
     Ok(Some(PriceLeg {
         provider_id: provider_id.map(str::to_string),
         model_id: model_id.to_string(),
-        price_source: "builtin".to_string(),
+        price_source: if provider_id.is_some() {
+            "provider_snapshot_or_global_fallback".to_string()
+        } else {
+            "builtin_global".to_string()
+        },
         price_observed_at: chrono::Utc::now().timestamp_millis(),
         input_per_million: input,
         output_per_million: output,
