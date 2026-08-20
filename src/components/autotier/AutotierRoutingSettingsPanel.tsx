@@ -52,15 +52,6 @@ import {
 
 export type ForcedCandidateChoice = "none" | "cheap" | "mid" | "strong";
 
-const FORCED_MODE_BY_CHOICE: Record<
-  Exclude<ForcedCandidateChoice, "none">,
-  string
-> = {
-  cheap: "forced_cheap",
-  mid: "forced_mid",
-  strong: "forced_strong",
-};
-
 export function forcedChoiceFromMode(mode: string): ForcedCandidateChoice {
   switch (mode) {
     case "forced_cheap":
@@ -76,12 +67,15 @@ export function forcedChoiceFromMode(mode: string): ForcedCandidateChoice {
 
 export function buildRoutingSaveMode(
   baseMode: AutotierModeV01,
-  forced: ForcedCandidateChoice,
-): string {
-  if (baseMode === "shadow" && forced !== "none") {
-    return FORCED_MODE_BY_CHOICE[forced];
-  }
+  _forced: ForcedCandidateChoice,
+): AutotierModeV01 {
   return baseMode;
+}
+
+export function advisoryCandidateFromChoice(
+  choice: ForcedCandidateChoice,
+): "cheap" | "mid" | "strong" | null {
+  return choice === "none" ? null : choice;
 }
 
 export function policyHintStatusV01(): "notConnected" {
@@ -143,9 +137,13 @@ function AutotierRoutingSettingsPanelInner() {
     setRetentionDays(configQuery.data.retention_days as AutotierRetentionDays);
     const degraded = configQuery.data.degraded_from;
     setForcedCandidate(
-      degraded
-        ? forcedChoiceFromMode(degraded)
-        : forcedChoiceFromMode(configQuery.data.mode),
+      configQuery.data.advisory_candidate === "cheap" ||
+        configQuery.data.advisory_candidate === "mid" ||
+        configQuery.data.advisory_candidate === "strong"
+        ? configQuery.data.advisory_candidate
+        : degraded
+          ? forcedChoiceFromMode(degraded)
+          : forcedChoiceFromMode(configQuery.data.mode),
     );
     setLastDegradedFrom(degraded);
   }, [configQuery.data]);
@@ -166,6 +164,7 @@ function AutotierRoutingSettingsPanelInner() {
     try {
       const saved = await saveConfig.mutateAsync({
         mode: saveMode as AutotierSaveConfigInput["mode"],
+        advisory_candidate: advisoryCandidateFromChoice(forcedCandidate),
         retention_days: retentionDays,
       });
       setLastDegradedFrom(saved.degraded_from);

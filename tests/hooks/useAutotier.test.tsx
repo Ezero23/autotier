@@ -21,6 +21,7 @@ const TAURI = "http://tauri.local";
 
 const SAMPLE_CONFIG: AutotierRoutingConfig = {
   mode: "shadow",
+  advisory_candidate: null,
   retention_days: 30,
   raw_prompt_opt_in: false,
   classifier_version: "rules-v0.2",
@@ -97,7 +98,11 @@ describe("autotier query/mutation (MSW)", () => {
     });
     await act(async () => {
       await expect(
-        result.current.mutateAsync({ mode: "off", retention_days: 30 }),
+        result.current.mutateAsync({
+          mode: "off",
+          advisory_candidate: null,
+          retention_days: 30,
+        }),
       ).rejects.toMatchObject({
         name: "AutotierApiError",
         code: "illegal_mode",

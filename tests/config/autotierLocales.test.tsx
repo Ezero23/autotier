@@ -16,6 +16,7 @@ import {
 } from "@/i18n/autotier/translations";
 import {
   AutotierRoutingSettingsPanel,
+  advisoryCandidateFromChoice,
   buildRoutingSaveMode,
   forcedChoiceFromMode,
   shouldShowLiveRoutingUi,
@@ -68,6 +69,7 @@ const locales = [
 
 const SAMPLE_CONFIG: AutotierRoutingConfig = {
   mode: "shadow",
+  advisory_candidate: null,
   retention_days: 30,
   raw_prompt_opt_in: false,
   classifier_version: "rules-v0.2",
@@ -88,16 +90,18 @@ function installRoutingApi(initial: AutotierRoutingConfig = SAMPLE_CONFIG) {
     ),
     http.post(`${TAURI}/autotier_save_routing_config`, async ({ request }) => {
       const body = (await request.json()) as {
-        input?: { mode?: string; retention_days?: number };
+        input?: {
+          mode?: string;
+          advisory_candidate?: "cheap" | "mid" | "strong" | null;
+          retention_days?: number;
+        };
       };
       config = {
         ...config,
         mode: "shadow",
+        advisory_candidate: body.input?.advisory_candidate ?? null,
         retention_days: body.input?.retention_days ?? config.retention_days,
-        degraded_from:
-          (body.input?.mode?.startsWith("forced_") ?? false)
-            ? (body.input?.mode ?? null)
-            : null,
+        degraded_from: null,
         updated_at: Date.now(),
       };
       return HttpResponse.json(config);
@@ -168,10 +172,11 @@ describe("autotier locale contract", () => {
 });
 
 describe("autotier routing helpers", () => {
-  it("maps forced modes and never exposes Live UI in v0.1", () => {
+  it("keeps forced-mode compatibility parsing separate from advisory saves", () => {
     expect(forcedChoiceFromMode("forced_mid")).toBe("mid");
-    expect(buildRoutingSaveMode("shadow", "strong")).toBe("forced_strong");
-    expect(buildRoutingSaveMode("off", "cheap")).toBe("off");
+    expect(buildRoutingSaveMode("shadow", "strong")).toBe("shadow");
+    expect(advisoryCandidateFromChoice("strong")).toBe("strong");
+    expect(advisoryCandidateFromChoice("none")).toBeNull();
     expect(shouldShowLiveRoutingUi()).toBe(false);
   });
 });
@@ -185,7 +190,9 @@ describe("AutotierRoutingSettingsPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("autotier-no-live-banner")).toBeInTheDocument();
     expect(screen.queryByText(/canary live/i)).not.toBeInTheDocument();
-    expect(await screen.findByTestId("autotier-privacy-copy")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("autotier-privacy-copy"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("autotier-version-stamps")).toBeInTheDocument();
     expect(screen.getByText(/Not connected/i)).toBeInTheDocument();
     expect(screen.getByTestId("autotier-canary-gate")).toHaveTextContent(
@@ -198,7 +205,9 @@ describe("AutotierRoutingSettingsPanel", () => {
     installRoutingApi();
     renderRoutingPanel();
     await screen.findByLabelText("Routing mode");
-    const forcedTrigger = await screen.findByLabelText(/Forced candidate slot/i);
+    const forcedTrigger = await screen.findByLabelText(
+      /Forced candidate slot/i,
+    );
     await user.click(forcedTrigger);
     await user.click(
       await screen.findByRole("option", { name: /Force Mid candidate/i }),
@@ -213,10 +222,13 @@ describe("AutotierRoutingSettingsPanel", () => {
       screen.getByRole("button", { name: /Save routing settings/i }),
     );
     await waitFor(() =>
-      expect(screen.getByTestId("autotier-degraded-warning")).toHaveTextContent(
-        /forced_mid/i,
-      ),
+      expect(
+        screen.getByTestId("autotier-forced-advisory"),
+      ).toBeInTheDocument(),
     );
+    expect(
+      screen.queryByTestId("autotier-degraded-warning"),
+    ).not.toBeInTheDocument();
   });
 
   it("exposes labeled controls for keyboard focus order", async () => {

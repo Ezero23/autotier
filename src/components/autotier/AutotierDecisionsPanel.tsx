@@ -19,6 +19,8 @@ import { settingsApi } from "@/lib/api/settings";
 import {
   AUTOTIER_DECISION_LABEL_REASONS,
   AUTOTIER_DECISION_LABELS,
+  AUTOTIER_REASON_CODES,
+  AUTOTIER_UNSAFE_REASONS,
   displayDecisionLabel,
   displaySlot,
   parseJsonStringArray,
@@ -483,17 +485,27 @@ function AutotierDecisionsPanelInner() {
                   defaultValue: "Reason",
                 })}
               </Label>
-              <ImeSafeInput
-                value={reasonFilter}
+              <Select
+                value={reasonFilter || "all"}
                 onValueChange={(value) => {
-                  setReasonFilter(value);
+                  setReasonFilter(value === "all" ? "" : value);
                   setOffset(0);
                 }}
-                placeholder={t("autotier.decisions.filterReasonPlaceholder", {
-                  defaultValue: "Reason code",
-                })}
-                className="w-[160px]"
-              />
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {t("autotier.decisions.filterAll")}
+                  </SelectItem>
+                  {AUTOTIER_REASON_CODES.map((code) => (
+                    <SelectItem key={code} value={code}>
+                      {code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>
@@ -501,20 +513,27 @@ function AutotierDecisionsPanelInner() {
                   defaultValue: "Unsafe reason",
                 })}
               </Label>
-              <ImeSafeInput
-                value={unsafeReasonFilter}
+              <Select
+                value={unsafeReasonFilter || "all"}
                 onValueChange={(value) => {
-                  setUnsafeReasonFilter(value);
+                  setUnsafeReasonFilter(value === "all" ? "" : value);
                   setOffset(0);
                 }}
-                placeholder={t(
-                  "autotier.decisions.filterUnsafeReasonPlaceholder",
-                  {
-                    defaultValue: "Unsafe reason",
-                  },
-                )}
-                className="w-[160px]"
-              />
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {t("autotier.decisions.filterAll")}
+                  </SelectItem>
+                  {AUTOTIER_UNSAFE_REASONS.map((reason) => (
+                    <SelectItem key={reason} value={reason}>
+                      {reason}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>

@@ -15,6 +15,9 @@ describe("autotier error enum", () => {
     expect(parseAutotierCommandError("illegal routing mode: banana")).toBe(
       "illegal_mode",
     );
+    expect(parseAutotierCommandError("illegal advisory_candidate: live")).toBe(
+      "illegal_advisory_candidate",
+    );
     expect(
       parseAutotierCommandError("retention_days 11 is not in [7, 14, 30, 90]"),
     ).toBe("illegal_retention");

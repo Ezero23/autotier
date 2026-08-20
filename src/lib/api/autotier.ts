@@ -50,6 +50,45 @@ export const AUTOTIER_DECISION_LABEL_REASONS = [
 export type AutotierDecisionLabelReason =
   (typeof AUTOTIER_DECISION_LABEL_REASONS)[number];
 
+export const AUTOTIER_REASON_CODES = [
+  "SHORT_USER_REQUEST",
+  "LOW_CONSTRAINT_COUNT",
+  "NO_ACTIVE_TOOL_LOOP",
+  "BACKGROUND_METADATA",
+  "EXPLICIT_SMALL_MODEL",
+  "LONG_CONTEXT",
+  "MULTI_FILE_SIGNAL",
+  "TOOL_ERROR_PRESENT",
+  "HIGH_CONSTRAINT_COUNT",
+  "REASONING_SIGNAL",
+  "ARCHITECTURE_SIGNAL",
+  "MULTIMODAL_INPUT",
+  "RECENT_COMPLEXITY_RISING",
+  "CACHE_PROTECTION",
+  "UNKNOWN_MODEL_CAPABILITY",
+  "PROVIDER_SLOT_UNAVAILABLE",
+  "USER_FORCED_SLOT",
+  "USER_BYPASS",
+  "CLASSIFIER_ERROR",
+] as const;
+export type AutotierReasonCode = (typeof AUTOTIER_REASON_CODES)[number];
+
+export const AUTOTIER_UNSAFE_REASONS = [
+  "CLASSIFIER_ERROR",
+  "CONFIG_MISSING",
+  "SLOT_INVALID",
+  "PROVIDER_NO_CANDIDATE",
+  "CAPABILITY_UNKNOWN",
+  "COST_MODEL_INCOMPLETE",
+  "POLICY_VERSION_INCOMPATIBLE",
+  "REQUEST_BODY_UNPARSEABLE",
+  "TOOL_USE_NOT_SUPPORTED",
+  "PRICE_MISSING",
+  "TOOL_ERROR_PRESENT",
+  "LONG_CONTEXT_EXCEEDED",
+] as const;
+export type AutotierUnsafeReason = (typeof AUTOTIER_UNSAFE_REASONS)[number];
+
 export interface AutotierDecisionCompletionStatus {
   decision_complete: boolean;
   usage_linked: boolean;
@@ -210,6 +249,7 @@ export interface AutotierImportLegacyResult {
 
 export type AutotierCommandErrorCode =
   | "illegal_mode"
+  | "illegal_advisory_candidate"
   | "illegal_retention"
   | "illegal_slot"
   | "illegal_capability"
@@ -221,6 +261,7 @@ const SECRET_FIELD = /^(api[_-]?key|authorization|secret|token|password)$/i;
 
 export interface AutotierRoutingConfig {
   mode: string;
+  advisory_candidate: string | null;
   retention_days: number;
   raw_prompt_opt_in: boolean;
   classifier_version: string;
@@ -235,6 +276,7 @@ export interface AutotierRoutingConfig {
 
 export interface AutotierSaveConfigInput {
   mode: AutotierModeV01;
+  advisory_candidate: "cheap" | "mid" | "strong" | null;
   retention_days: AutotierRetentionDays;
 }
 
@@ -296,6 +338,9 @@ export function parseAutotierCommandError(
 ): AutotierCommandErrorCode {
   const msg = message.toLowerCase();
   if (msg.includes("illegal routing mode")) return "illegal_mode";
+  if (msg.includes("illegal advisory_candidate")) {
+    return "illegal_advisory_candidate";
+  }
   if (msg.includes("retention_days")) return "illegal_retention";
   if (msg.includes("illegal slot")) return "illegal_slot";
   if (msg.includes("illegal capability_status")) return "illegal_capability";

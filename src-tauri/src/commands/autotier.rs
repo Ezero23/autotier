@@ -33,11 +33,13 @@ const LIVE_MODES: [&str; 5] = [
     "forced_mid",
     "forced_strong",
 ];
+const ADVISORY_CANDIDATES: [&str; 3] = ["cheap", "mid", "strong"];
 
 /// 配置读出视图：单行 DB 配置 + 当日版本常量。不含 Key。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutotierRoutingConfigView {
     pub mode: String,
+    pub advisory_candidate: Option<String>,
     pub retention_days: i32,
     pub raw_prompt_opt_in: bool,
     pub classifier_version: String,
@@ -54,6 +56,8 @@ pub struct AutotierRoutingConfigView {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SaveRoutingConfigInput {
     pub mode: String,
+    #[serde(default)]
+    pub advisory_candidate: Option<String>,
     pub retention_days: i32,
 }
 
@@ -169,11 +173,13 @@ pub(crate) fn save_routing_config(
     db: &Database,
     input: SaveRoutingConfigInput,
 ) -> Result<AutotierRoutingConfigView, AppError> {
-    let (mode, degraded_from) = resolve_save_mode(&input.mode)?;
+    let (mode, degraded_from, advisory_candidate) =
+        resolve_save_mode(&input.mode, input.advisory_candidate.as_deref())?;
     validate_retention_days(input.retention_days)?;
 
     let mut config = db.autotier_get_config()?;
     config.mode = mode.to_string();
+    config.advisory_candidate = advisory_candidate;
     config.retention_days = input.retention_days;
     config.raw_prompt_opt_in = false;
     config.classifier_version = CLASSIFIER_VERSION.to_string();
@@ -394,6 +400,7 @@ fn config_view(
 ) -> AutotierRoutingConfigView {
     AutotierRoutingConfigView {
         mode: config.mode,
+        advisory_candidate: config.advisory_candidate,
         retention_days: config.retention_days,
         raw_prompt_opt_in: false,
         classifier_version: config.classifier_version,
@@ -418,11 +425,15 @@ fn is_live_mode(mode: &str) -> bool {
 /// 读路径：Live → Shadow；未知 → Off。返回被降级的原值。
 fn normalize_stored_mode(config: &mut AutotierRoutingConfigDto) -> Option<String> {
     let mode = normalize_mode(&config.mode);
+    config.advisory_candidate = normalized_advisory_candidate(config.advisory_candidate.as_deref());
     if mode == "off" || mode == "shadow" {
         config.mode = mode;
         return None;
     }
     if is_live_mode(&mode) {
+        if config.advisory_candidate.is_none() {
+            config.advisory_candidate = legacy_advisory_candidate(&mode).map(str::to_string);
+        }
         config.mode = "shadow".into();
         return Some(mode);
     }
@@ -431,15 +442,56 @@ fn normalize_stored_mode(config: &mut AutotierRoutingConfigDto) -> Option<String
     Some(original)
 }
 
-fn resolve_save_mode(raw: &str) -> Result<(&'static str, Option<String>), AppError> {
+fn resolve_save_mode(
+    raw: &str,
+    raw_advisory_candidate: Option<&str>,
+) -> Result<(&'static str, Option<String>, Option<String>), AppError> {
     let mode = normalize_mode(raw);
+    let advisory_candidate = validate_advisory_candidate(raw_advisory_candidate)?;
     match mode.as_str() {
-        "off" => Ok(("off", None)),
-        "shadow" => Ok(("shadow", None)),
-        live if is_live_mode(live) => Ok(("shadow", Some(live.to_string()))),
+        "off" => Ok(("off", None, advisory_candidate)),
+        "shadow" => Ok(("shadow", None, advisory_candidate)),
+        live if is_live_mode(live) => Ok((
+            "shadow",
+            Some(live.to_string()),
+            advisory_candidate.or_else(|| legacy_advisory_candidate(live).map(str::to_string)),
+        )),
         other => Err(AppError::InvalidInput(format!(
             "illegal routing mode: {other}"
         ))),
+    }
+}
+
+fn normalized_advisory_candidate(raw: Option<&str>) -> Option<String> {
+    let value = raw?.trim().to_ascii_lowercase();
+    ADVISORY_CANDIDATES
+        .contains(&value.as_str())
+        .then_some(value)
+}
+
+fn validate_advisory_candidate(raw: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let value = raw.trim().to_ascii_lowercase();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if ADVISORY_CANDIDATES.contains(&value.as_str()) {
+        Ok(Some(value))
+    } else {
+        Err(AppError::InvalidInput(format!(
+            "illegal advisory_candidate: {value}"
+        )))
+    }
+}
+
+fn legacy_advisory_candidate(mode: &str) -> Option<&'static str> {
+    match mode {
+        "forced_cheap" => Some("cheap"),
+        "forced_mid" => Some("mid"),
+        "forced_strong" => Some("strong"),
+        _ => None,
     }
 }
 
@@ -530,6 +582,7 @@ mod tests {
             &db,
             SaveRoutingConfigInput {
                 mode: "off".into(),
+                advisory_candidate: None,
                 retention_days: 14,
             },
         )
@@ -541,6 +594,7 @@ mod tests {
             &db,
             SaveRoutingConfigInput {
                 mode: "Shadow".into(),
+                advisory_candidate: None,
                 retention_days: 30,
             },
         )
@@ -556,6 +610,7 @@ mod tests {
             &db,
             SaveRoutingConfigInput {
                 mode: "banana".into(),
+                advisory_candidate: None,
                 retention_days: 30,
             },
         )
@@ -571,6 +626,7 @@ mod tests {
             &db,
             SaveRoutingConfigInput {
                 mode: "full_live".into(),
+                advisory_candidate: None,
                 retention_days: 30,
             },
         )
@@ -578,6 +634,70 @@ mod tests {
         assert_eq!(view.mode, "shadow");
         assert_eq!(view.degraded_from.as_deref(), Some("full_live"));
         assert_eq!(db.autotier_get_config().unwrap().mode, "shadow");
+    }
+
+    #[test]
+    fn forced_candidate_is_persisted_separately_from_mode() {
+        let db = db();
+        let view = save_routing_config(
+            &db,
+            SaveRoutingConfigInput {
+                mode: "forced_mid".into(),
+                advisory_candidate: None,
+                retention_days: 30,
+            },
+        )
+        .unwrap();
+        assert_eq!(view.mode, "shadow");
+        assert_eq!(view.advisory_candidate.as_deref(), Some("mid"));
+        assert_eq!(view.degraded_from.as_deref(), Some("forced_mid"));
+        let stored = db.autotier_get_config().unwrap();
+        assert_eq!(stored.mode, "shadow");
+        assert_eq!(stored.advisory_candidate.as_deref(), Some("mid"));
+    }
+
+    #[test]
+    fn explicit_advisory_candidate_roundtrips_with_shadow() {
+        let db = db();
+        let view = save_routing_config(
+            &db,
+            SaveRoutingConfigInput {
+                mode: "shadow".into(),
+                advisory_candidate: Some("STRONG".into()),
+                retention_days: 30,
+            },
+        )
+        .unwrap();
+        assert_eq!(view.mode, "shadow");
+        assert_eq!(view.advisory_candidate.as_deref(), Some("strong"));
+        assert!(view.degraded_from.is_none());
+    }
+
+    #[test]
+    fn illegal_advisory_candidate_is_rejected() {
+        let db = db();
+        let err = save_routing_config(
+            &db,
+            SaveRoutingConfigInput {
+                mode: "shadow".into(),
+                advisory_candidate: Some("live".into()),
+                retention_days: 30,
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("illegal advisory_candidate"));
+    }
+
+    #[test]
+    fn stored_forced_mode_migrates_candidate_on_read() {
+        let db = db();
+        let mut config = db.autotier_get_config().unwrap();
+        config.mode = "forced_strong".into();
+        db.autotier_set_config(&config).unwrap();
+        let view = load_routing_config(&db).unwrap();
+        assert_eq!(view.mode, "shadow");
+        assert_eq!(view.advisory_candidate.as_deref(), Some("strong"));
+        assert_eq!(view.degraded_from.as_deref(), Some("forced_strong"));
     }
 
     #[test]
@@ -599,6 +719,7 @@ mod tests {
             &db,
             SaveRoutingConfigInput {
                 mode: "shadow".into(),
+                advisory_candidate: None,
                 retention_days: 11,
             },
         )
