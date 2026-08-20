@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   autotierApi,
+  type AutotierDecisionQueryFilter,
   type AutotierProviderSlot,
   type AutotierRetentionDays,
   type AutotierSaveConfigInput,
+  type UpsertDecisionLabelInput,
 } from "@/lib/api/autotier";
 
 export const autotierKeys = {
@@ -12,6 +14,10 @@ export const autotierKeys = {
   slots: (providerId: string) => ["autotier", "slots", providerId] as const,
   required: (providerId: string) =>
     ["autotier", "required", providerId] as const,
+  decisions: (filter: AutotierDecisionQueryFilter) =>
+    ["autotier", "decisions", filter] as const,
+  decisionDetail: (decisionId: string) =>
+    ["autotier", "decision", decisionId] as const,
 };
 
 export function useAutotierRoutingConfig(enabled = true) {
@@ -91,5 +97,41 @@ export function usePruneAutotierDecisions() {
   return useMutation({
     mutationFn: (retentionDays?: AutotierRetentionDays) =>
       autotierApi.pruneDecisions(retentionDays),
+  });
+}
+
+export function useAutotierDecisions(
+  filter: AutotierDecisionQueryFilter,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: autotierKeys.decisions(filter),
+    queryFn: () => autotierApi.queryDecisions(filter),
+    enabled,
+  });
+}
+
+export function useAutotierDecisionDetail(decisionId: string | null) {
+  return useQuery({
+    queryKey: autotierKeys.decisionDetail(decisionId ?? ""),
+    queryFn: () =>
+      decisionId
+        ? autotierApi.getDecisionDetail(decisionId)
+        : Promise.resolve(null),
+    enabled: Boolean(decisionId),
+  });
+}
+
+export function useUpsertAutotierDecisionLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpsertDecisionLabelInput) =>
+      autotierApi.upsertDecisionLabel(input),
+    onSuccess: (label) => {
+      queryClient.invalidateQueries({ queryKey: autotierKeys.all });
+      queryClient.invalidateQueries({
+        queryKey: autotierKeys.decisionDetail(label.decision_id),
+      });
+    },
   });
 }

@@ -20,6 +20,7 @@ import {
   forcedChoiceFromMode,
   shouldShowLiveRoutingUi,
 } from "@/components/autotier/AutotierRoutingSettingsPanel";
+import { AutotierDecisionsPanel } from "@/components/autotier/AutotierDecisionsPanel";
 import type { AutotierRoutingConfig } from "@/lib/api/autotier";
 import { server } from "../msw/server";
 import { createTestQueryClient } from "../utils/testQueryClient";
@@ -227,5 +228,23 @@ describe("AutotierRoutingSettingsPanel", () => {
     expect(mode).toHaveFocus();
     await userEvent.tab();
     expect(retention).toHaveFocus();
+  });
+
+  it("renders decisions panel with shadow-not-executed badge", async () => {
+    const user = userEvent.setup();
+    const client = createTestQueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <AutotierDecisionsPanel />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/Shadow decisions/i)).toBeInTheDocument();
+    const row = await screen.findByRole("row", { name: /claude/i });
+    await user.click(row);
+    expect(
+      await screen.findByText(/Shadow did not execute the candidate/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Client request/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Baseline outbound/i)).toBeInTheDocument();
   });
 });
