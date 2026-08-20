@@ -1,16 +1,19 @@
-import {
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useContext, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   QueryClient,
   QueryClientContext,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, ClipboardList, Download, Loader2, Play, BarChart3 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Download,
+  Loader2,
+  Play,
+  BarChart3,
+} from "lucide-react";
 import { toast } from "sonner";
 import { settingsApi } from "@/lib/api/settings";
 import {
@@ -92,7 +95,10 @@ function formatModel(value: string | null | undefined, empty: string): string {
   return value;
 }
 
-function formatProvider(value: string | null | undefined, empty: string): string {
+function formatProvider(
+  value: string | null | undefined,
+  empty: string,
+): string {
   if (!value || !value.trim()) return empty;
   return value;
 }
@@ -116,12 +122,10 @@ function RouteGroup({
   title,
   model,
   provider,
-  empty,
 }: {
   title: string;
   model: string;
   provider: string;
-  empty: string;
 }) {
   return (
     <div className="rounded-lg border border-border/60 p-3 space-y-1">
@@ -139,7 +143,8 @@ function AutotierDecisionsPanelInner() {
   const [completeFilter, setCompleteFilter] = useState<string>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draftLabel, setDraftLabel] = useState<AutotierDecisionLabel>("correct");
+  const [draftLabel, setDraftLabel] =
+    useState<AutotierDecisionLabel>("correct");
   const [draftReason, setDraftReason] = useState<
     AutotierDecisionLabelReason | "none"
   >("none");
@@ -213,8 +218,7 @@ function AutotierDecisionsPanelInner() {
       if (!dir) return;
       const report = await evaluateExport.mutateAsync(dir);
       const warning =
-        report.metrics.warnings[0] ??
-        t("autotier.decisions.evalNoWarnings");
+        report.metrics.warnings[0] ?? t("autotier.decisions.evalNoWarnings");
       setToolSummary(
         t("autotier.decisions.evalSuccess", {
           holdout: report.metrics.holdout_count,
@@ -303,7 +307,10 @@ function AutotierDecisionsPanelInner() {
           <CardDescription>{t("autotier.decisions.subtitle")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2" data-testid="autotier-data-tools">
+          <div
+            className="flex flex-wrap gap-2"
+            data-testid="autotier-data-tools"
+          >
             <Button
               type="button"
               variant="outline"
@@ -438,7 +445,9 @@ function AutotierDecisionsPanelInner() {
                     <TableHead>{t("autotier.decisions.colTime")}</TableHead>
                     <TableHead>{t("autotier.decisions.colApp")}</TableHead>
                     <TableHead>{t("autotier.decisions.colClient")}</TableHead>
-                    <TableHead>{t("autotier.decisions.colCandidate")}</TableHead>
+                    <TableHead>
+                      {t("autotier.decisions.colCandidate")}
+                    </TableHead>
                     <TableHead>{t("autotier.decisions.colActual")}</TableHead>
                     <TableHead>{t("autotier.decisions.colStatus")}</TableHead>
                   </TableRow>
@@ -508,7 +517,9 @@ function AutotierDecisionsPanelInner() {
                 variant="outline"
                 size="sm"
                 disabled={!canPrev}
-                onClick={() => setOffset((value) => Math.max(0, value - PAGE_SIZE))}
+                onClick={() =>
+                  setOffset((value) => Math.max(0, value - PAGE_SIZE))
+                }
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -558,7 +569,6 @@ function AutotierDecisionsPanelInner() {
                       detail.initial_selected_provider,
                       emptyValue,
                     )}
-                    empty={emptyValue}
                   />
                   <RouteGroup
                     title={t("autotier.decisions.groupBaseline")}
@@ -570,7 +580,6 @@ function AutotierDecisionsPanelInner() {
                       detail.baseline_outbound_provider,
                       emptyValue,
                     )}
-                    empty={emptyValue}
                   />
                   <RouteGroup
                     title={t("autotier.decisions.groupCandidate")}
@@ -579,7 +588,6 @@ function AutotierDecisionsPanelInner() {
                       detail.candidate_provider,
                       emptyValue,
                     )}
-                    empty={emptyValue}
                   />
                   <RouteGroup
                     title={t("autotier.decisions.groupActual")}
@@ -591,7 +599,6 @@ function AutotierDecisionsPanelInner() {
                       detail.actual_outbound_provider,
                       emptyValue,
                     )}
-                    empty={emptyValue}
                   />
                 </div>
 
@@ -730,7 +737,7 @@ function AutotierDecisionsPanelInner() {
                       <Label>{t("autotier.decisions.noteField")}</Label>
                       <ImeSafeInput
                         value={draftNote}
-                        onChange={(event) => setDraftNote(event.target.value)}
+                        onValueChange={setDraftNote}
                         placeholder={t("autotier.decisions.notePlaceholder")}
                       />
                     </div>

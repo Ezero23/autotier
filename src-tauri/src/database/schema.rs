@@ -548,21 +548,29 @@ impl Database {
              ON autotier_routing_decisions(created_at)",
             [],
         )
-        .map_err(|e| AppError::Database(format!("创建 autotier decisions created_at 索引失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!("创建 autotier decisions created_at 索引失败: {e}"))
+        })?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_session
              ON autotier_routing_decisions(session_id_hash)",
             [],
         )
-        .map_err(|e| AppError::Database(format!("创建 autotier decisions session 索引失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!("创建 autotier decisions session 索引失败: {e}"))
+        })?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_client_model
              ON autotier_routing_decisions(client_requested_model)",
             [],
         )
-        .map_err(|e| AppError::Database(format!("创建 autotier decisions client_model 索引失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "创建 autotier decisions client_model 索引失败: {e}"
+            ))
+        })?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_slot
@@ -576,14 +584,18 @@ impl Database {
              ON autotier_routing_decisions(classifier_version)",
             [],
         )
-        .map_err(|e| AppError::Database(format!("创建 autotier decisions classifier 索引失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!("创建 autotier decisions classifier 索引失败: {e}"))
+        })?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_autotier_decisions_complete
              ON autotier_routing_decisions(is_complete)",
             [],
         )
-        .map_err(|e| AppError::Database(format!("创建 autotier decisions complete 索引失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!("创建 autotier decisions complete 索引失败: {e}"))
+        })?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_autotier_labels_label
@@ -707,7 +719,9 @@ impl Database {
                         Self::set_user_version(conn, 17)?;
                     }
                     17 => {
-                        log::info!("迁移数据库从 v17 到 v18（AutoTier: 决策日志、配置、Slot 与标注表）");
+                        log::info!(
+                            "迁移数据库从 v17 到 v18（AutoTier: 决策日志、配置、Slot 与标注表）"
+                        );
                         Self::migrate_v17_to_v18(conn)?;
                         Self::set_user_version(conn, 18)?;
                     }
@@ -1756,7 +1770,11 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_provider_slots 失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "migrate_v17_to_v18: autotier_provider_slots 失败: {e}"
+            ))
+        })?;
 
         // autotier_routing_config（PRD §11.2）
         conn.execute(
@@ -1772,7 +1790,11 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_routing_config 失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "migrate_v17_to_v18: autotier_routing_config 失败: {e}"
+            ))
+        })?;
 
         // autotier_routing_decisions（PRD §11.3）
         conn.execute(
@@ -1834,7 +1856,11 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_routing_decisions 失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "migrate_v17_to_v18: autotier_routing_decisions 失败: {e}"
+            ))
+        })?;
 
         // autotier_decision_labels（PRD §11.4）
         conn.execute(
@@ -1851,7 +1877,11 @@ impl Database {
             )",
             [],
         )
-        .map_err(|e| AppError::Database(format!("migrate_v17_to_v18: autotier_decision_labels 失败: {e}")))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "migrate_v17_to_v18: autotier_decision_labels 失败: {e}"
+            ))
+        })?;
 
         // 索引（PRD §11.5）
         for (idx_name, sql) in [

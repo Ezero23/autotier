@@ -103,7 +103,8 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
                     // 检查 tool_result 内嵌的 image/document block
                     if let Some(arr) = block.get("content").and_then(Value::as_array) {
                         for inner in arr {
-                            let inner_type = inner.get("type").and_then(Value::as_str).unwrap_or("");
+                            let inner_type =
+                                inner.get("type").and_then(Value::as_str).unwrap_or("");
                             if inner_type == "image" || inner_type == "document" {
                                 has_image_or_file = true;
                             }
@@ -157,10 +158,7 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
 
     let has_effort_or_thinking = body.get("thinking").is_some()
         || body.get("reasoning_effort").is_some()
-        || body
-            .get("metadata")
-            .and_then(|m| m.get("effort"))
-            .is_some();
+        || body.get("metadata").and_then(|m| m.get("effort")).is_some();
 
     RoutingFeatures {
         app_type,
@@ -174,7 +172,9 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
         constraint_count,
         code_structure_score: code_structure_score(code_block_count, file_path_count),
         has_image_or_file,
-        context_token_bucket: TokenBucket::from_tokens((total_chars / CHARS_PER_TOKEN as u64) as u32),
+        context_token_bucket: TokenBucket::from_tokens(
+            (total_chars / CHARS_PER_TOKEN as u64) as u32,
+        ),
         cache_read_tokens: 0, // 请求到达时未知，由 Usage Finalize 阶段回填
         cache_write_tokens: (cache_write_chars / CHARS_PER_TOKEN as u64) as u32,
         has_effort_or_thinking,
@@ -192,13 +192,10 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
 /// 把 content 字段统一为 block 迭代：字符串包装成单个 text block，数组原样返回。
 fn content_blocks(content: Option<&Value>) -> Vec<Value> {
     match content {
-        Some(Value::String(s)) => vec![Value::Object(serde_json::Map::from_iter([(
-            "type".to_string(),
-            Value::String("text".to_string()),
-        ), (
-            "text".to_string(),
-            Value::String(s.clone()),
-        )]))],
+        Some(Value::String(s)) => vec![Value::Object(serde_json::Map::from_iter([
+            ("type".to_string(), Value::String("text".to_string())),
+            ("text".to_string(), Value::String(s.clone())),
+        ]))],
         Some(Value::Array(arr)) => arr.clone(),
         _ => Vec::new(),
     }
@@ -239,8 +236,8 @@ fn is_cjk(c: char) -> bool {
 /// 约束条件计数：中英文强约束关键词出现次数（指令密度信号）。
 fn count_constraints(text: &str) -> u32 {
     const KEYWORDS: &[&str] = &[
-        "必须", "不要", "禁止", "不得", "只能", "务必", "严格",
-        "must", "do not", "don't", "never", "always", "only", "strictly",
+        "必须", "不要", "禁止", "不得", "只能", "务必", "严格", "must", "do not", "don't", "never",
+        "always", "only", "strictly",
     ];
     let lower = text.to_lowercase();
     KEYWORDS
@@ -256,10 +253,16 @@ fn count_code_fences(text: &str) -> u32 {
 
 /// 文件路径信号计数（粗粒度：含 `/` 且以常见源码扩展名结尾的 token）。
 fn count_file_paths(text: &str) -> u32 {
-    const EXTS: &[&str] = &[".rs", ".ts", ".tsx", ".js", ".py", ".go", ".java", ".md", ".json", ".toml"];
+    const EXTS: &[&str] = &[
+        ".rs", ".ts", ".tsx", ".js", ".py", ".go", ".java", ".md", ".json", ".toml",
+    ];
     text.split_whitespace()
         .filter(|tok| {
-            tok.contains('/') && EXTS.iter().any(|e| tok.trim_end_matches([',', ')', ']', '`', '"', '\'']).ends_with(e))
+            tok.contains('/')
+                && EXTS.iter().any(|e| {
+                    tok.trim_end_matches([',', ')', ']', '`', '"', '\''])
+                        .ends_with(e)
+                })
         })
         .count() as u32
 }
@@ -533,10 +536,22 @@ mod tests {
             }]
         }));
         assert!(
-            matches!(f.context_token_bucket, TokenBucket::Under1k | TokenBucket::Under4k | TokenBucket::Under16k | TokenBucket::Under64k | TokenBucket::Under128k | TokenBucket::Over128k),
+            matches!(
+                f.context_token_bucket,
+                TokenBucket::Under1k
+                    | TokenBucket::Under4k
+                    | TokenBucket::Under16k
+                    | TokenBucket::Under64k
+                    | TokenBucket::Under128k
+                    | TokenBucket::Over128k
+            ),
             "tool_use.input 应贡献足够的 token"
         );
-        assert_ne!(f.context_token_bucket, TokenBucket::Zero, "tool_use.input 应贡献 >0 tokens");
+        assert_ne!(
+            f.context_token_bucket,
+            TokenBucket::Zero,
+            "tool_use.input 应贡献 >0 tokens"
+        );
     }
 
     #[test]
@@ -555,7 +570,10 @@ mod tests {
                 }]
             }]
         }));
-        assert!(f.has_image_or_file, "嵌套在 tool_result 里的 image 应被识别");
+        assert!(
+            f.has_image_or_file,
+            "嵌套在 tool_result 里的 image 应被识别"
+        );
     }
 
     #[test]

@@ -104,7 +104,8 @@ export const autotierTranslations = {
         "A read-only legacy database was found. You can copy it into ~/.autotier without modifying the source. Restart AutoTier after import to use the new data directory.",
       legacyImportAction: "Copy legacy database",
       legacyImportRunning: "Importing…",
-      legacyImportSuccess: "Legacy data copied to {{path}}. Restart AutoTier to activate.",
+      legacyImportSuccess:
+        "Legacy data copied to {{path}}. Restart AutoTier to activate.",
     },
     decisions: {
       title: "Shadow decisions",
@@ -299,7 +300,8 @@ export const autotierTranslations = {
         "发现只读 legacy 数据库。可复制到 ~/.autotier，不会修改源数据。导入后请重启 AutoTier 以启用新数据目录。",
       legacyImportAction: "复制 legacy 数据库",
       legacyImportRunning: "导入中…",
-      legacyImportSuccess: "Legacy 数据已复制到 {{path}}，请重启 AutoTier 生效。",
+      legacyImportSuccess:
+        "Legacy 数据已复制到 {{path}}，请重启 AutoTier 生效。",
     },
     decisions: {
       title: "Shadow 决策",
@@ -329,8 +331,7 @@ export const autotierTranslations = {
       detailTitle: "决策详情",
       detailLoading: "正在加载详情…",
       detailMissing: "未找到该决策。",
-      shadowNotExecuted:
-        "Shadow 未执行候选模型——实际出站保持基线路径。",
+      shadowNotExecuted: "Shadow 未执行候选模型——实际出站保持基线路径。",
       groupClient: "客户端请求",
       groupBaseline: "基线出站",
       groupCandidate: "候选（未执行）",
@@ -496,7 +497,8 @@ export const autotierTranslations = {
         "読み取り専用 legacy DB が見つかりました。~/.autotier へコピーできます（ソースは変更しません）。インポート後 AutoTier を再起動してください。",
       legacyImportAction: "legacy DB をコピー",
       legacyImportRunning: "インポート中…",
-      legacyImportSuccess: "legacy データを {{path}} にコピーしました。AutoTier を再起動してください。",
+      legacyImportSuccess:
+        "legacy データを {{path}} にコピーしました。AutoTier を再起動してください。",
     },
     decisions: {
       title: "Shadow Decision",
@@ -691,7 +693,8 @@ export const autotierTranslations = {
         "發現唯讀 legacy 資料庫。可複製到 ~/.autotier，不會修改來源。匯入後請重新啟動 AutoTier。",
       legacyImportAction: "複製 legacy 資料庫",
       legacyImportRunning: "匯入中…",
-      legacyImportSuccess: "Legacy 資料已複製到 {{path}}，請重新啟動 AutoTier。",
+      legacyImportSuccess:
+        "Legacy 資料已複製到 {{path}}，請重新啟動 AutoTier。",
     },
     decisions: {
       title: "Shadow 決策",
@@ -721,8 +724,7 @@ export const autotierTranslations = {
       detailTitle: "決策詳情",
       detailLoading: "正在載入詳情…",
       detailMissing: "未找到該決策。",
-      shadowNotExecuted:
-        "Shadow 未執行候選模型——實際出站保持基線路徑。",
+      shadowNotExecuted: "Shadow 未執行候選模型——實際出站保持基線路徑。",
       groupClient: "用戶端請求",
       groupBaseline: "基線出站",
       groupCandidate: "候選（未執行）",

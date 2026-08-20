@@ -5544,9 +5544,7 @@ mod tests {
 
         let result = SkillService::migrate_storage(&db, SkillStorageLocation::CcSwitch)
             .expect("migrate away from alias");
-        let new_source = temp
-            .path()
-            .join(".cc-switch")
+        let new_source = crate::config::get_app_config_dir()
             .join("skills")
             .join("test-skill");
         let pi_skill = temp
@@ -5658,7 +5656,13 @@ mod tests {
             .join("test-skill");
         fs::create_dir_all(pi_skill.parent().expect("Pi skills directory"))
             .expect("create Pi skills directory");
-        std::os::unix::fs::symlink(Path::new("../../.cc-switch/skills/test-skill"), &pi_skill)
+        let app_config_dir = crate::config::get_app_config_dir();
+        let config_dir_name = app_config_dir
+            .file_name()
+            .expect("config dir name")
+            .to_string_lossy();
+        let symlink_target = format!("../../{config_dir_name}/skills/test-skill");
+        std::os::unix::fs::symlink(Path::new(&symlink_target), &pi_skill)
             .expect("create relative Pi symlink");
 
         let result = SkillService::migrate_storage(&db, SkillStorageLocation::Unified)

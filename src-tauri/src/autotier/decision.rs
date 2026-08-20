@@ -136,8 +136,7 @@ impl RoutingSessionState {
             return false;
         }
         let mid = n / 2;
-        let first_half: f32 =
-            self.recent_complexity_scores[..mid].iter().sum::<f32>() / mid as f32;
+        let first_half: f32 = self.recent_complexity_scores[..mid].iter().sum::<f32>() / mid as f32;
         let second_half: f32 =
             self.recent_complexity_scores[mid..].iter().sum::<f32>() / (n - mid) as f32;
         second_half > first_half
@@ -580,9 +579,7 @@ mod tests {
         let input = make_simple_input();
         let result = shadow_decide(&input, 0);
         assert_eq!(result.recommended_slot, Some(ModelSlot::Cheap));
-        assert!(result
-            .reason_codes
-            .contains(&ReasonCode::ShortUserRequest));
+        assert!(result.reason_codes.contains(&ReasonCode::ShortUserRequest));
     }
 
     #[test]
@@ -590,9 +587,7 @@ mod tests {
         let input = make_complex_input();
         let result = shadow_decide(&input, 0);
         assert_eq!(result.recommended_slot, Some(ModelSlot::Strong));
-        assert!(result
-            .reason_codes
-            .contains(&ReasonCode::ToolErrorPresent));
+        assert!(result.reason_codes.contains(&ReasonCode::ToolErrorPresent));
     }
 
     // --- DecisionResult::shadow_noop ---
@@ -615,14 +610,18 @@ mod tests {
         input.client_requested_model = "claude-haiku-4-5-20251001".to_string();
         let result = shadow_decide(&input, 0);
         assert_eq!(result.recommended_slot, Some(ModelSlot::Cheap));
-        assert!(result.reason_codes.contains(&ReasonCode::ExplicitSmallModel));
+        assert!(result
+            .reason_codes
+            .contains(&ReasonCode::ExplicitSmallModel));
     }
 
     #[test]
     fn unknown_capability_always_flagged_in_v01() {
         // Unknown Capability：v0.1 无能力验证体系，任何结果都带 CAPABILITY_UNKNOWN
         let result = shadow_decide(&make_simple_input(), 0);
-        assert!(result.unsafe_reasons.contains(&UnsafeReason::CapabilityUnknown));
+        assert!(result
+            .unsafe_reasons
+            .contains(&UnsafeReason::CapabilityUnknown));
         assert!(!result.safe_to_execute);
     }
 
@@ -633,7 +632,9 @@ mod tests {
         input.features.tool_result_count = 1;
         let result = shadow_decide(&input, 0);
         assert!(result.reason_codes.contains(&ReasonCode::ToolErrorPresent));
-        assert!(result.unsafe_reasons.contains(&UnsafeReason::ToolErrorPresent));
+        assert!(result
+            .unsafe_reasons
+            .contains(&UnsafeReason::ToolErrorPresent));
     }
 
     #[test]
@@ -699,7 +700,10 @@ mod tests {
         }
         times.sort();
         let p95 = times[RUNS * 95 / 100];
-        assert!(p95.as_micros() < 1000, "p95 decide latency {p95:?} exceeds 1ms");
+        assert!(
+            p95.as_micros() < 1000,
+            "p95 decide latency {p95:?} exceeds 1ms"
+        );
     }
 
     // --- 测试辅助 ---

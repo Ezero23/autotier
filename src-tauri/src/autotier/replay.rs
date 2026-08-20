@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_config::AppType;
 use crate::autotier::export::{ExportDecisionLine, ExportManifest, EXPORT_SCHEMA_VERSION};
-use crate::autotier::{
-    shadow_decide, DecisionId, DecisionInput, RoutingMode, RoutingSessionState,
-    CLASSIFIER_VERSION, POLICY_VERSION,
-};
 use crate::autotier::features::RoutingFeatures;
+use crate::autotier::{
+    shadow_decide, DecisionId, DecisionInput, RoutingMode, RoutingSessionState, CLASSIFIER_VERSION,
+    POLICY_VERSION,
+};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -96,10 +96,7 @@ pub fn replay_export_dir(export_dir: &Path) -> Result<ReplayReport, AppError> {
         )));
     }
     if !manifest.policy_versions.is_empty()
-        && !manifest
-            .policy_versions
-            .iter()
-            .all(|v| v == POLICY_VERSION)
+        && !manifest.policy_versions.iter().all(|v| v == POLICY_VERSION)
     {
         return Err(AppError::InvalidInput(format!(
             "policy version mismatch: export={:?}, runtime={POLICY_VERSION}",
@@ -196,7 +193,9 @@ pub fn replay_export_dir(export_dir: &Path) -> Result<ReplayReport, AppError> {
 mod tests {
     use super::*;
     use crate::autotier::export::{export_bundle, ExportManifest, ExportTimeRange};
-    use crate::autotier::{DecisionId, DecisionInput, RoutingMode, RoutingSessionState, shadow_decide};
+    use crate::autotier::{
+        shadow_decide, DecisionId, DecisionInput, RoutingMode, RoutingSessionState,
+    };
     use crate::database::{AutotierDecisionRow, Database};
 
     fn sample_row(id: &str) -> AutotierDecisionRow {
@@ -254,11 +253,8 @@ mod tests {
 
     #[test]
     fn replay_is_deterministic_from_export() {
-        let features = RoutingFeatures::empty(
-            AppType::Claude,
-            "claude-sonnet-4-20250514",
-            "hash-001",
-        );
+        let features =
+            RoutingFeatures::empty(AppType::Claude, "claude-sonnet-4-20250514", "hash-001");
         let input = DecisionInput {
             decision_id: DecisionId("d-replay".into()),
             app_type: AppType::Claude,
@@ -292,7 +288,8 @@ mod tests {
 
     #[test]
     fn replay_rejects_incompatible_manifest() {
-        let dir = std::env::temp_dir().join(format!("autotier-replay-bad-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("autotier-replay-bad-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let manifest = ExportManifest {
             export_schema_version: 999,

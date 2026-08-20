@@ -407,7 +407,9 @@ export const autotierApi = {
     return invokeAutotier("autotier_query_decisions", { filter });
   },
 
-  getDecisionDetail(decisionId: string): Promise<AutotierDecisionDetail | null> {
+  getDecisionDetail(
+    decisionId: string,
+  ): Promise<AutotierDecisionDetail | null> {
     return invokeAutotier("autotier_get_decision_detail", { decisionId });
   },
 

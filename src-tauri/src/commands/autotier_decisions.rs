@@ -98,7 +98,10 @@ pub(crate) fn upsert_decision_label(
     }
     let label = normalize_label(&input.label)?;
     let reason = normalize_optional_reason(input.reason.as_deref())?;
-    let note = input.note.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let note = input
+        .note
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty());
     let now = Utc::now().timestamp_millis();
     let dto = AutotierDecisionLabelDto {
         decision_id: decision_id.to_string(),
@@ -128,7 +131,9 @@ fn normalize_label(raw: &str) -> Result<String, AppError> {
     if DECISION_LABELS.contains(&label.as_str()) {
         Ok(label)
     } else {
-        Err(AppError::InvalidInput(format!("illegal decision label: {label}")))
+        Err(AppError::InvalidInput(format!(
+            "illegal decision label: {label}"
+        )))
     }
 }
 
@@ -223,7 +228,8 @@ mod tests {
     #[test]
     fn upsert_label_rejects_unknown_enum() {
         let db = test_db();
-        db.autotier_upsert_decision(&make_decision_row("d-label")).unwrap();
+        db.autotier_upsert_decision(&make_decision_row("d-label"))
+            .unwrap();
         let err = upsert_decision_label(
             &db,
             UpsertDecisionLabelInput {
@@ -240,7 +246,8 @@ mod tests {
     #[test]
     fn query_and_detail_round_trip() {
         let db = test_db();
-        db.autotier_upsert_decision(&make_decision_row("d-round")).unwrap();
+        db.autotier_upsert_decision(&make_decision_row("d-round"))
+            .unwrap();
         let page = query_decisions(
             &db,
             AutotierDecisionQueryFilter {

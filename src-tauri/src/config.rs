@@ -248,10 +248,7 @@ pub fn get_app_config_dir() -> PathBuf {
 /// SQLite 数据库路径：AutoTier 使用 `autotier.db`，legacy 目录仍用 `cc-switch.db`。
 pub fn get_app_database_path() -> PathBuf {
     let dir = get_app_config_dir();
-    let file_name = if dir
-        .file_name()
-        .is_some_and(|name| name == ".cc-switch")
-    {
+    let file_name = if dir.file_name().is_some_and(|name| name == ".cc-switch") {
         "cc-switch.db"
     } else {
         "autotier.db"

@@ -8,9 +8,7 @@ use crate::autotier::replay::{replay_export_dir, ReplayReport};
 use crate::error::AppError;
 
 #[tauri::command]
-pub fn autotier_replay_export(
-    export_dir: String,
-) -> Result<ReplayReport, String> {
+pub fn autotier_replay_export(export_dir: String) -> Result<ReplayReport, String> {
     replay_export(&export_dir).map_err(|e| e.to_string())
 }
 

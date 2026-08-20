@@ -71,6 +71,7 @@ pub fn test_mutex() -> &'static Mutex<()> {
 /// 创建测试用的 AppState，包含一个空的数据库
 #[allow(dead_code)]
 pub fn create_test_state() -> Result<AppState, Box<dyn std::error::Error>> {
+    ensure_test_crypto();
     let db = Arc::new(Database::init()?);
     Ok(AppState::new(db))
 }
@@ -80,7 +81,16 @@ pub fn create_test_state() -> Result<AppState, Box<dyn std::error::Error>> {
 pub fn create_test_state_with_config(
     config: &MultiAppConfig,
 ) -> Result<AppState, Box<dyn std::error::Error>> {
+    ensure_test_crypto();
     let db = Arc::new(Database::init()?);
     db.migrate_from_json(config)?;
     Ok(AppState::new(db))
+}
+
+/// Integration tests bypass Tauri setup; install rustls ring provider once.
+fn ensure_test_crypto() {
+    static INIT: OnceLock<()> = OnceLock::new();
+    INIT.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
 }

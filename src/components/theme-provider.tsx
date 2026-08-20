@@ -39,7 +39,9 @@ export function ThemeProvider({
       return stored;
     }
 
-    const legacy = window.localStorage.getItem("cc-switch-theme") as Theme | null;
+    const legacy = window.localStorage.getItem(
+      "cc-switch-theme",
+    ) as Theme | null;
     if (legacy === "light" || legacy === "dark" || legacy === "system") {
       window.localStorage.setItem(storageKey, legacy);
       return legacy;
