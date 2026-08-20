@@ -29,6 +29,8 @@ pub struct EvalDecisionRow {
     pub recommended_slot: Option<String>,
     pub actual_outbound_model: Option<String>,
     pub candidate_model: Option<String>,
+    pub actual_cost_usd: Option<String>,
+    pub candidate_cost_base_usd: Option<String>,
     pub label: Option<String>,
     pub unsafe_reasons_json: String,
     pub split: EvalSplit,
@@ -66,6 +68,11 @@ pub fn assign_split(session_hash: &str, seed: u64) -> EvalSplit {
     } else {
         EvalSplit::Holdout
     }
+}
+
+fn has_unsafe_reasons(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    !trimmed.is_empty() && trimmed != "[]" && trimmed != "null"
 }
 
 fn parse_labels(path: &Path) -> Result<HashMap<String, String>, AppError> {
@@ -131,24 +138,29 @@ pub fn compute_metrics(rows: &[EvalDecisionRow]) -> EvalMetrics {
         strong_recall_hits as f64 / labeled_should_stronger as f64
     };
 
-    let unsafe_downgrade = holdout_rows
+    let unsafe_rows = holdout_rows
         .iter()
-        .filter(|r| {
-            !r.unsafe_reasons_json.trim().is_empty()
-                && r.unsafe_reasons_json != "[]"
-                && r.recommended_slot.as_deref() == Some("cheap")
-        })
-        .count() as f64
-        / holdout_count.max(1) as f64;
+        .filter(|r| has_unsafe_reasons(&r.unsafe_reasons_json))
+        .collect::<Vec<_>>();
+    let unsafe_downgrade = if unsafe_rows.is_empty() {
+        0.0
+    } else {
+        unsafe_rows
+            .iter()
+            .filter(|r| r.recommended_slot.as_deref() == Some("cheap"))
+            .count() as f64
+            / unsafe_rows.len() as f64
+    };
 
+    // Positive value means the Candidate projection is cheaper than the actual
+    // outbound route. Rows without both prices are intentionally excluded.
     let cache_adjusted_saving_usd = holdout_rows
         .iter()
         .filter_map(|r| {
-            r.candidate_model
-                .as_ref()
-                .zip(r.actual_outbound_model.as_ref())
-                .filter(|(candidate, actual)| candidate != actual)
-                .map(|_| 0.0)
+            let actual = r.actual_cost_usd.as_deref()?.parse::<f64>().ok()?;
+            let candidate = r.candidate_cost_base_usd.as_deref()?.parse::<f64>().ok()?;
+            let saving = actual - candidate;
+            saving.is_finite().then_some(saving)
         })
         .sum();
 
@@ -185,6 +197,8 @@ pub fn evaluate_export_dir(export_dir: &Path, seed: u64) -> Result<EvalReport, A
             recommended_slot: line.recommended_slot.clone(),
             actual_outbound_model: line.actual_outbound_model.clone(),
             candidate_model: line.candidate_model.clone(),
+            actual_cost_usd: line.actual_cost_usd.clone(),
+            candidate_cost_base_usd: line.candidate_cost_base_usd.clone(),
             label: labels.get(&line.decision_id).cloned(),
             unsafe_reasons_json: line.unsafe_reasons_json.clone(),
             split: assign_split(&line.session_id_hash, seed),
@@ -239,6 +253,8 @@ mod tests {
                 recommended_slot: Some("cheap".into()),
                 actual_outbound_model: Some("strong-model".into()),
                 candidate_model: Some("cheap-model".into()),
+                actual_cost_usd: Some("0.010".into()),
+                candidate_cost_base_usd: Some("0.004".into()),
                 label: None,
                 unsafe_reasons_json: "[]".into(),
                 split: EvalSplit::Holdout,
@@ -247,5 +263,6 @@ mod tests {
         let metrics = compute_metrics(&rows);
         assert!(!metrics.holdout_sample_sufficient);
         assert!(!metrics.warnings.is_empty());
+        assert!((metrics.cache_adjusted_saving_usd - 0.03).abs() < f64::EPSILON);
     }
 }

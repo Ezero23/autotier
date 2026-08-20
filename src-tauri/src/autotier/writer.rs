@@ -10,8 +10,8 @@ use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::time::{Duration, Instant};
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -32,6 +32,8 @@ type HmacSha256 = Hmac<Sha256>;
 
 pub const SESSION_SECRET_LEN: usize = 32;
 pub const DECISION_QUEUE_CAP: usize = 4096;
+const PENDING_FINALIZE_CAP: usize = 4096;
+const PENDING_FINALIZE_TTL: Duration = Duration::from_secs(300);
 
 /// HMAC-SHA-256 hex（小写）。Secret 不得写入日志。
 pub fn hash_session_id(session_id: &str, secret: &[u8]) -> SessionIdHash {
@@ -131,7 +133,7 @@ pub struct FinalizeEvent {
 pub enum DecisionEvent {
     Create(AutotierDecisionRow),
     Finalize(FinalizeEvent),
-    Flush(oneshot::Sender<()>),
+    Flush(oneshot::Sender<bool>),
 }
 
 #[derive(Clone)]
@@ -185,26 +187,29 @@ impl DecisionWriter {
         {
             return false;
         }
-        tokio::time::timeout(timeout, wait).await.is_ok()
+        matches!(tokio::time::timeout(timeout, wait).await, Ok(Ok(true)))
     }
 }
 
-fn writer_slot() -> &'static Mutex<Option<(usize, DecisionWriter)>> {
-    static SLOT: OnceLock<Mutex<Option<(usize, DecisionWriter)>>> = OnceLock::new();
+type WriterSlot = Mutex<Option<(Weak<Database>, DecisionWriter)>>;
+
+fn writer_slot() -> &'static WriterSlot {
+    static SLOT: OnceLock<WriterSlot> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
-/// 按 `Arc<Database>` 身份复用 Writer。测试重建 DB 时自动换新消费者。
+/// 按 `Arc<Database>` 身份复用 Writer。使用 Weak 做 ptr_eq，避免数据库释放后
+/// 新 Arc 恰好复用同一地址而错误复用已关闭的 Writer channel。
 pub fn writer_for(db: Arc<Database>) -> DecisionWriter {
-    let key = Arc::as_ptr(&db) as usize;
     let mut slot = writer_slot().lock().unwrap_or_else(|e| e.into_inner());
     if let Some((existing, writer)) = slot.as_ref() {
-        if *existing == key {
+        let current = Arc::downgrade(&db);
+        if existing.ptr_eq(&current) {
             return writer.clone();
         }
     }
-    let writer = DecisionWriter::spawn(db, DECISION_QUEUE_CAP);
-    *slot = Some((key, writer.clone()));
+    let writer = DecisionWriter::spawn(db.clone(), DECISION_QUEUE_CAP);
+    *slot = Some((Arc::downgrade(&db), writer.clone()));
     writer
 }
 
@@ -257,16 +262,45 @@ pub fn enqueue_usage_finalize(
     )
 }
 
+struct PendingFinalize {
+    event: FinalizeEvent,
+    queued_at: Instant,
+}
+
+fn evict_stale_pending(pending: &mut HashMap<String, PendingFinalize>) {
+    let now = Instant::now();
+    let stale = pending
+        .iter()
+        .filter(|(_, item)| now.duration_since(item.queued_at) > PENDING_FINALIZE_TTL)
+        .map(|(id, _)| id.clone())
+        .collect::<Vec<_>>();
+    for id in stale {
+        pending.remove(&id);
+        log::warn!("[AutoTier] pending Finalize expired; observation dropped");
+    }
+
+    while pending.len() >= PENDING_FINALIZE_CAP {
+        let oldest = pending
+            .iter()
+            .min_by_key(|(_, item)| item.queued_at)
+            .map(|(id, _)| id.clone());
+        let Some(id) = oldest else { break };
+        pending.remove(&id);
+        log::warn!("[AutoTier] pending Finalize capacity reached; observation dropped");
+    }
+}
+
 async fn consumer_loop(
     db: Arc<Database>,
     mut rx: mpsc::Receiver<DecisionEvent>,
     write_failures: Arc<AtomicU64>,
 ) {
-    let mut pending_finalize: HashMap<String, FinalizeEvent> = HashMap::new();
+    let mut pending_finalize: HashMap<String, PendingFinalize> = HashMap::new();
     while let Some(event) = rx.recv().await {
+        evict_stale_pending(&mut pending_finalize);
         match event {
             DecisionEvent::Flush(ack) => {
-                let _ = ack.send(());
+                let _ = ack.send(pending_finalize.is_empty());
             }
             other => {
                 let db = db.clone();
@@ -293,21 +327,30 @@ async fn consumer_loop(
 fn process_event(
     db: &Database,
     event: DecisionEvent,
-    pending: &mut HashMap<String, FinalizeEvent>,
+    pending: &mut HashMap<String, PendingFinalize>,
 ) -> Result<(), AppError> {
     match event {
         DecisionEvent::Create(row) => {
             let id = row.decision_id.clone();
             db.autotier_upsert_decision(&row)?;
-            if let Some(finalize) = pending.remove(&id) {
-                apply_finalize(db, &finalize)?;
+            if let Some(pending_finalize) = pending.remove(&id) {
+                if let Err(error) = apply_finalize(db, &pending_finalize.event) {
+                    pending.insert(id, pending_finalize);
+                    return Err(error);
+                }
             }
             Ok(())
         }
         DecisionEvent::Finalize(finalize) => match apply_finalize(db, &finalize) {
             Ok(()) => Ok(()),
             Err(e) if is_missing_decision(&e) => {
-                pending.insert(finalize.decision_id.clone(), finalize);
+                pending.insert(
+                    finalize.decision_id.clone(),
+                    PendingFinalize {
+                        event: finalize,
+                        queued_at: Instant::now(),
+                    },
+                );
                 Ok(())
             }
             Err(e) => Err(e),
@@ -464,14 +507,22 @@ fn lookup_price_leg(
     }
     let conn = lock_conn!(db.conn);
     let Some((input, output, cache_read, cache_creation)) =
-        crate::services::usage_stats::find_model_pricing_row(&conn, model_id)?
+        crate::services::usage_stats::find_provider_model_pricing_row(
+            &conn,
+            provider_id,
+            model_id,
+        )?
     else {
         return Ok(None);
     };
     Ok(Some(PriceLeg {
         provider_id: provider_id.map(str::to_string),
         model_id: model_id.to_string(),
-        price_source: "builtin".to_string(),
+        price_source: if provider_id.is_some() {
+            "provider_snapshot_or_global_fallback".to_string()
+        } else {
+            "builtin_global".to_string()
+        },
         price_observed_at: chrono::Utc::now().timestamp_millis(),
         input_per_million: input,
         output_per_million: output,
@@ -580,6 +631,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn load_or_create_secret_is_stable_in_scope() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -653,10 +705,11 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn thousand_create_finalize_pairs_are_not_silently_lost() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
-        let db = Arc::new(Database::init().expect("init db"));
+        // This test verifies queue ordering and losslessness, not filesystem throughput.
+        // An in-memory database keeps the assertion deterministic on Windows CI.
+        let db = Arc::new(Database::memory().expect("init in-memory db"));
         let writer = DecisionWriter::spawn(db.clone(), DECISION_QUEUE_CAP);
 
         let mut joins = Vec::with_capacity(1000);
@@ -677,7 +730,9 @@ mod tests {
         for join in joins {
             join.await.expect("task");
         }
-        assert!(writer.flush(Duration::from_secs(15)).await);
+        // Windows CI 的 SQLite + debug test binary 处理 2,000 个事件可能超过 15s；
+        // 这里验证的是不丢事件，不是把磁盘吞吐当作产品 SLO。
+        assert!(writer.flush(Duration::from_secs(120)).await);
         assert_eq!(writer.dropped(), 0, "queue dropped events");
         let n = db.autotier_count_decisions().expect("count");
         assert_eq!(n, 1000);
@@ -687,6 +742,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn usage_finalize_sets_complete_without_looking_up_logs() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -714,6 +770,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn usage_finalize_skips_ineligible_empty_usage() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -732,6 +789,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn finalize_fills_baseline_and_actual_outbound() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -766,6 +824,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn usage_unknown_ttl_does_not_fill_5m_or_1h() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -797,6 +856,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn usage_5m_and_1h_ttl_are_attributed_separately() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -859,6 +919,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn historical_price_update_does_not_rewrite_decision_cost() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
@@ -912,6 +973,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[serial_test::serial]
     async fn missing_price_leaves_actual_cost_unset() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());

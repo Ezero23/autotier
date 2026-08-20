@@ -1,10 +1,13 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches:
+      - main
+      - "autotier/**"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -210,8 +213,8 @@ jobs:
       - name: Run Windows-to-WSL2 filesystem contract
         shell: pwsh
         run: |
-          $env:TEMP = $env:CC_SWITCH_WSL_TEST_TEMP
-          $env:TMP = $env:CC_SWITCH_WSL_TEST_TEMP
+          # Keep Cargo/link.exe on a native temp path. The UNC TEMP is only needed
+          # by the already-built test process, because the test asserts temp_dir().
           $testName = "config::tests::atomic_write_replaces_existing_wsl_unc_file"
           $testList = cargo test --lib --manifest-path src-tauri/Cargo.toml -- --ignored --list
           if ($LASTEXITCODE -ne 0) {
@@ -221,7 +224,15 @@ jobs:
           if ($testList -notcontains $expected) {
             throw "Expected ignored test was not discovered: $testName"
           }
-          cargo test --lib --manifest-path src-tauri/Cargo.toml $testName -- --ignored --exact --nocapture
+          $testBinary = Get-ChildItem -Path "src-tauri/target/debug/deps" -Filter "cc_switch_lib-*.exe" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($null -eq $testBinary) {
+            throw "Compiled cc_switch_lib test binary was not found"
+          }
+          $env:TEMP = $env:CC_SWITCH_WSL_TEST_TEMP
+          $env:TMP = $env:CC_SWITCH_WSL_TEST_TEMP
+          & $testBinary.FullName $testName --ignored --exact --nocapture
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

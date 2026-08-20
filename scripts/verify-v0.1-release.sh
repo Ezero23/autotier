@@ -90,8 +90,8 @@ mkdir -p "$(dirname "$RESULT")"
 cat > "$RESULT" <<EOF
 # AutoTier v0.1.0 — Automated Verification Results
 
-**Generated**: $TS UTC  
-**Git**: \`$GIT_SHA\`  
+**Generated**: $TS UTC
+**Git**: \`$GIT_SHA\`
 **Script**: \`scripts/verify-v0.1-release.sh\`
 
 ## Summary

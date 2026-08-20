@@ -17,7 +17,8 @@ use crate::database::{
 };
 use crate::error::AppError;
 
-pub const EXPORT_SCHEMA_VERSION: i32 = 1;
+pub const EXPORT_SCHEMA_VERSION: i32 = 2;
+pub const EXPORT_COMPLETE_MARKER: &str = "bundle.complete";
 const MAX_EXPORT_DECISIONS: i64 = 500_000;
 const MAX_EXPORT_BYTES: u64 = 256 * 1024 * 1024;
 const CANARY_PATTERNS: &[&str] = &[
@@ -43,6 +44,12 @@ pub struct ExportManifest {
     pub feature_versions: Vec<String>,
     pub classifier_versions: Vec<String>,
     pub policy_versions: Vec<String>,
+    #[serde(default)]
+    pub capability_table_versions: Vec<String>,
+    #[serde(default)]
+    pub cost_model_versions: Vec<String>,
+    #[serde(default)]
+    pub cache_stats_versions: Vec<String>,
     pub hash_algorithm: String,
     pub hash_scope: String,
     pub contains_raw_prompt: bool,
@@ -78,10 +85,25 @@ pub struct ExportDecisionLine {
     pub feature_version: String,
     pub classifier_version: String,
     pub policy_version: String,
+    pub capability_table_version: String,
+    pub cost_model_version: String,
+    pub cache_stats_version: String,
+    pub actual_input_tokens: Option<i64>,
+    pub actual_output_tokens: Option<i64>,
+    pub actual_cache_read_tokens: Option<i64>,
+    pub actual_cache_write_5m_tokens: Option<i64>,
+    pub actual_cache_write_1h_tokens: Option<i64>,
     pub actual_cost_usd: Option<String>,
     pub candidate_cost_low_usd: Option<String>,
     pub candidate_cost_base_usd: Option<String>,
     pub candidate_cost_high_usd: Option<String>,
+    pub cost_assumptions_json: String,
+    pub status_code: Option<i64>,
+    pub outcome: Option<String>,
+    pub retry_count: i32,
+    pub fallback_count: i32,
+    pub error_code: Option<String>,
+    pub autotier_mutated_request: bool,
     pub is_complete: bool,
     pub usage_request_id: Option<String>,
 }
@@ -118,6 +140,18 @@ pub fn validate_export_dir(path: &str) -> Result<PathBuf, AppError> {
     Ok(path)
 }
 
+fn parse_cost_version(raw: &str, key: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|value| {
+            value
+                .get(key)
+                .and_then(|item| item.as_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_default()
+}
+
 fn row_to_export_line(row: &AutotierDecisionRow) -> ExportDecisionLine {
     ExportDecisionLine {
         decision_id: row.decision_id.clone(),
@@ -144,10 +178,28 @@ fn row_to_export_line(row: &AutotierDecisionRow) -> ExportDecisionLine {
         feature_version: row.feature_version.clone(),
         classifier_version: row.classifier_version.clone(),
         policy_version: row.policy_version.clone(),
+        capability_table_version: parse_cost_version(
+            &row.cost_assumptions_json,
+            "capability_table_version",
+        ),
+        cost_model_version: parse_cost_version(&row.cost_assumptions_json, "cost_model_version"),
+        cache_stats_version: parse_cost_version(&row.cost_assumptions_json, "cache_stats_version"),
+        actual_input_tokens: row.actual_input_tokens,
+        actual_output_tokens: row.actual_output_tokens,
+        actual_cache_read_tokens: row.actual_cache_read_tokens,
+        actual_cache_write_5m_tokens: row.actual_cache_write_5m_tokens,
+        actual_cache_write_1h_tokens: row.actual_cache_write_1h_tokens,
         actual_cost_usd: row.actual_cost_usd.clone(),
         candidate_cost_low_usd: row.candidate_cost_low_usd.clone(),
         candidate_cost_base_usd: row.candidate_cost_base_usd.clone(),
         candidate_cost_high_usd: row.candidate_cost_high_usd.clone(),
+        cost_assumptions_json: row.cost_assumptions_json.clone(),
+        status_code: row.status_code,
+        outcome: row.outcome.clone(),
+        retry_count: row.retry_count,
+        fallback_count: row.fallback_count,
+        error_code: row.error_code.clone(),
+        autotier_mutated_request: row.autotier_mutated_request,
         is_complete: row.is_complete,
         usage_request_id: row.usage_request_id.clone(),
     }
@@ -268,6 +320,9 @@ pub fn export_bundle(db: &Database, output_dir: &Path) -> Result<ExportBundleRes
     let mut feature_versions = BTreeSet::new();
     let mut classifier_versions = BTreeSet::new();
     let mut policy_versions = BTreeSet::new();
+    let mut capability_table_versions = BTreeSet::new();
+    let mut cost_model_versions = BTreeSet::new();
+    let mut cache_stats_versions = BTreeSet::new();
     let mut since_ms: Option<i64> = None;
     let mut until_ms: Option<i64> = None;
 
@@ -275,6 +330,19 @@ pub fn export_bundle(db: &Database, output_dir: &Path) -> Result<ExportBundleRes
         feature_versions.insert(row.feature_version.clone());
         classifier_versions.insert(row.classifier_version.clone());
         policy_versions.insert(row.policy_version.clone());
+        let capability_version =
+            parse_cost_version(&row.cost_assumptions_json, "capability_table_version");
+        if !capability_version.is_empty() {
+            capability_table_versions.insert(capability_version);
+        }
+        let cost_version = parse_cost_version(&row.cost_assumptions_json, "cost_model_version");
+        if !cost_version.is_empty() {
+            cost_model_versions.insert(cost_version);
+        }
+        let cache_version = parse_cost_version(&row.cost_assumptions_json, "cache_stats_version");
+        if !cache_version.is_empty() {
+            cache_stats_versions.insert(cache_version);
+        }
         since_ms = Some(since_ms.map_or(row.created_at, |v| v.min(row.created_at)));
         until_ms = Some(until_ms.map_or(row.created_at, |v| v.max(row.created_at)));
     }
@@ -286,6 +354,9 @@ pub fn export_bundle(db: &Database, output_dir: &Path) -> Result<ExportBundleRes
         feature_versions: feature_versions.into_iter().collect(),
         classifier_versions: classifier_versions.into_iter().collect(),
         policy_versions: policy_versions.into_iter().collect(),
+        capability_table_versions: capability_table_versions.into_iter().collect(),
+        cost_model_versions: cost_model_versions.into_iter().collect(),
+        cache_stats_versions: cache_stats_versions.into_iter().collect(),
         hash_algorithm: "HMAC-SHA-256".into(),
         hash_scope: "install".into(),
         contains_raw_prompt: false,
@@ -350,10 +421,16 @@ pub fn export_bundle(db: &Database, output_dir: &Path) -> Result<ExportBundleRes
             return Err(err);
         }
     }
+    atomic_write(&tmp.join(EXPORT_COMPLETE_MARKER), b"ok\n")?;
 
     fs::create_dir_all(output_dir)
         .map_err(|e| AppError::Database(format!("export output dir failed: {e}")))?;
 
+    let completion_path = output_dir.join(EXPORT_COMPLETE_MARKER);
+    if completion_path.exists() {
+        fs::remove_file(&completion_path)
+            .map_err(|e| AppError::Database(format!("export marker cleanup failed: {e}")))?;
+    }
     for name in ["decisions.jsonl", "labels.jsonl", "manifest.json"] {
         let from = tmp.join(name);
         let to = output_dir.join(name);
@@ -364,6 +441,9 @@ pub fn export_bundle(db: &Database, output_dir: &Path) -> Result<ExportBundleRes
         fs::rename(&from, &to)
             .map_err(|e| AppError::Database(format!("export finalize failed: {e}")))?;
     }
+    let marker_from = tmp.join(EXPORT_COMPLETE_MARKER);
+    fs::rename(&marker_from, &completion_path)
+        .map_err(|e| AppError::Database(format!("export marker finalize failed: {e}")))?;
     let _ = fs::remove_dir(&tmp);
 
     Ok(ExportBundleResult {

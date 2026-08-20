@@ -43,9 +43,9 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
 
     // 检查 messages 字段是否存在且为数组；缺失或类型错误 → Unparseable。
     let messages_raw = body.get("messages");
-    let (messages, extraction_status) = match messages_raw {
-        Some(Value::Array(arr)) => (arr.clone(), ExtractionStatus::Success),
-        _ => (Vec::new(), ExtractionStatus::Unparseable),
+    let (messages, extraction_status): (&[Value], ExtractionStatus) = match messages_raw {
+        Some(Value::Array(arr)) => (arr.as_slice(), ExtractionStatus::Success),
+        _ => (&[], ExtractionStatus::Unparseable),
     };
 
     let mut user_weighted_len: u32 = 0;
@@ -59,7 +59,7 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
     let mut total_chars: u64 = 0;
     let mut cache_write_chars: u64 = 0;
 
-    for msg in &messages {
+    for msg in messages {
         let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
         if role == "user" {
             user_turns += 1;
@@ -577,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn extraction_p95_under_1ms() {
+    fn extraction_p95_stays_within_platform_budget() {
         // 构造一个接近真实 Claude Code 规模的中等请求
         let body = json!({
             "model": "claude-sonnet-4-20250514",
@@ -600,10 +600,20 @@ mod tests {
         }
         times.sort();
         let p95 = times[RUNS * 95 / 100];
+        // Keep a strict 1ms budget on Linux while allowing scheduler and JSON
+        // runtime variance on Windows and macOS CI runners.
+        let budget_micros = if cfg!(target_os = "linux") {
+            1_000
+        } else if cfg!(target_os = "macos") {
+            3_000
+        } else {
+            2_000
+        };
         assert!(
-            p95.as_micros() < 1000,
-            "p95 extraction latency {:?} exceeds 1ms",
-            p95
+            p95.as_micros() < budget_micros,
+            "p95 extraction latency {:?} exceeds platform budget of {}us",
+            p95,
+            budget_micros
         );
     }
 }

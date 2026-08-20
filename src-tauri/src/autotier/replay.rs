@@ -9,7 +9,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::app_config::AppType;
-use crate::autotier::export::{ExportDecisionLine, ExportManifest, EXPORT_SCHEMA_VERSION};
+use crate::autotier::export::{
+    ExportDecisionLine, ExportManifest, EXPORT_COMPLETE_MARKER, EXPORT_SCHEMA_VERSION,
+};
 use crate::autotier::features::RoutingFeatures;
 use crate::autotier::{
     shadow_decide, DecisionId, DecisionInput, RoutingMode, RoutingSessionState, CLASSIFIER_VERSION,
@@ -68,6 +70,11 @@ fn decision_input_from_line(line: &ExportDecisionLine) -> Result<DecisionInput, 
 }
 
 pub fn load_export_manifest(export_dir: &Path) -> Result<ExportManifest, AppError> {
+    if !export_dir.join(EXPORT_COMPLETE_MARKER).is_file() {
+        return Err(AppError::InvalidInput(
+            "export bundle is incomplete or missing completion marker".into(),
+        ));
+    }
     let path = export_dir.join("manifest.json");
     let raw = fs::read_to_string(&path)
         .map_err(|e| AppError::InvalidInput(format!("manifest read failed: {e}")))?;
@@ -301,6 +308,9 @@ mod tests {
             feature_versions: vec![],
             classifier_versions: vec![],
             policy_versions: vec![],
+            capability_table_versions: vec![],
+            cost_model_versions: vec![],
+            cache_stats_versions: vec![],
             hash_algorithm: "HMAC-SHA-256".into(),
             hash_scope: "install".into(),
             contains_raw_prompt: false,
@@ -314,6 +324,7 @@ mod tests {
             serde_json::to_string_pretty(&manifest).unwrap(),
         )
         .unwrap();
+        fs::write(dir.join(EXPORT_COMPLETE_MARKER), "ok\n").unwrap();
         fs::write(dir.join("decisions.jsonl"), "").unwrap();
         let err = replay_export_dir(&dir).unwrap_err();
         assert!(err.to_string().contains("export_schema_version"));

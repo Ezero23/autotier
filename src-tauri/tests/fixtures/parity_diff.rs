@@ -133,7 +133,9 @@ fn diff_json_with_skip(prefix: &str, left: &Value, right: &Value, skip_keys: &[&
             .iter()
             .zip(b.iter())
             .enumerate()
-            .flat_map(|(i, (lv, rv))| diff_json_with_skip(&format!("{prefix}[{i}]"), lv, rv, skip_keys))
+            .flat_map(|(i, (lv, rv))| {
+                diff_json_with_skip(&format!("{prefix}[{i}]"), lv, rv, skip_keys)
+            })
             .collect(),
         _ => vec![Diff::new(prefix, compact(left), compact(right))],
     }
