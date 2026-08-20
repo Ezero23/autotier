@@ -184,7 +184,7 @@ describe("AutotierRoutingSettingsPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("autotier-no-live-banner")).toBeInTheDocument();
     expect(screen.queryByText(/canary live/i)).not.toBeInTheDocument();
-    expect(screen.getByTestId("autotier-privacy-copy")).toBeInTheDocument();
+    expect(await screen.findByTestId("autotier-privacy-copy")).toBeInTheDocument();
     expect(screen.getByTestId("autotier-version-stamps")).toBeInTheDocument();
     expect(screen.getByText(/Not connected/i)).toBeInTheDocument();
     expect(screen.getByTestId("autotier-canary-gate")).toHaveTextContent(
@@ -196,10 +196,11 @@ describe("AutotierRoutingSettingsPanel", () => {
     const user = userEvent.setup();
     installRoutingApi();
     renderRoutingPanel();
-    await screen.findByLabelText(/Forced candidate slot/i);
-    await user.click(screen.getByLabelText(/Forced candidate slot/i));
+    await screen.findByLabelText("Routing mode");
+    const forcedTrigger = await screen.findByLabelText(/Forced candidate slot/i);
+    await user.click(forcedTrigger);
     await user.click(
-      screen.getByRole("option", { name: /Force Mid candidate/i }),
+      await screen.findByRole("option", { name: /Force Mid candidate/i }),
     );
     expect(screen.getByTestId("autotier-forced-advisory")).toHaveTextContent(
       /Advisory only — not executed/i,
