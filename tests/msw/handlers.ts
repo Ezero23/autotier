@@ -429,6 +429,7 @@ export const handlers = [
   http.post(`${TAURI_ENDPOINT}/autotier_get_routing_config`, () =>
     success({
       mode: "shadow",
+      advisory_candidate: null,
       retention_days: 30,
       raw_prompt_opt_in: false,
       classifier_version: "rules-v0.2",
@@ -445,10 +446,15 @@ export const handlers = [
     `${TAURI_ENDPOINT}/autotier_save_routing_config`,
     async ({ request }) => {
       const { input } = await withJson<{
-        input?: { mode?: string; retention_days?: number };
+        input?: {
+          mode?: string;
+          advisory_candidate?: "cheap" | "mid" | "strong" | null;
+          retention_days?: number;
+        };
       }>(request);
       return success({
         mode: "shadow",
+        advisory_candidate: input?.advisory_candidate ?? null,
         retention_days: input?.retention_days ?? 30,
         raw_prompt_opt_in: false,
         classifier_version: "rules-v0.2",
@@ -458,7 +464,7 @@ export const handlers = [
         cost_model_version: "cost-model-v0.1",
         cache_stats_version: "cache-stats-v0.1",
         updated_at: Date.now(),
-        degraded_from: input?.mode?.startsWith("forced_") ? input.mode : null,
+        degraded_from: null,
       });
     },
   ),

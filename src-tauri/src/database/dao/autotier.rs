@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutotierRoutingConfigDto {
     pub mode: String,
+    pub advisory_candidate: Option<String>,
     pub retention_days: i32,
     pub raw_prompt_opt_in: bool,
     pub classifier_version: String,
@@ -35,6 +36,7 @@ impl Default for AutotierRoutingConfigDto {
     fn default() -> Self {
         Self {
             mode: "shadow".to_string(),
+            advisory_candidate: None,
             retention_days: 30,
             raw_prompt_opt_in: false,
             classifier_version: CLASSIFIER_VERSION.to_string(),
@@ -787,7 +789,7 @@ impl Database {
         let conn = lock_conn!(self.conn);
         let row = conn
             .query_row(
-                "SELECT mode, retention_days, raw_prompt_opt_in,
+                "SELECT mode, advisory_candidate, retention_days, raw_prompt_opt_in,
                         classifier_version, feature_version, policy_version, updated_at
                  FROM autotier_routing_config
                  WHERE id = 1",
@@ -795,12 +797,13 @@ impl Database {
                 |row| {
                     Ok(AutotierRoutingConfigDto {
                         mode: row.get(0)?,
-                        retention_days: row.get(1)?,
-                        raw_prompt_opt_in: row.get(2)?,
-                        classifier_version: row.get(3)?,
-                        feature_version: row.get(4)?,
-                        policy_version: row.get(5)?,
-                        updated_at: row.get(6)?,
+                        advisory_candidate: row.get(1)?,
+                        retention_days: row.get(2)?,
+                        raw_prompt_opt_in: row.get(3)?,
+                        classifier_version: row.get(4)?,
+                        feature_version: row.get(5)?,
+                        policy_version: row.get(6)?,
+                        updated_at: row.get(7)?,
                     })
                 },
             )
@@ -814,11 +817,12 @@ impl Database {
         let conn = lock_conn!(self.conn);
         conn.execute(
             "INSERT INTO autotier_routing_config (
-                id, mode, retention_days, raw_prompt_opt_in,
+                id, mode, advisory_candidate, retention_days, raw_prompt_opt_in,
                 classifier_version, feature_version, policy_version, updated_at
-            ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             ON CONFLICT(id) DO UPDATE SET
                 mode = excluded.mode,
+                advisory_candidate = excluded.advisory_candidate,
                 retention_days = excluded.retention_days,
                 raw_prompt_opt_in = excluded.raw_prompt_opt_in,
                 classifier_version = excluded.classifier_version,
@@ -827,6 +831,7 @@ impl Database {
                 updated_at = excluded.updated_at",
             params![
                 config.mode,
+                config.advisory_candidate,
                 config.retention_days,
                 config.raw_prompt_opt_in,
                 config.classifier_version,
@@ -1478,6 +1483,7 @@ mod tests {
         let db = test_db();
         let config = AutotierRoutingConfigDto {
             mode: "off".to_string(),
+            advisory_candidate: Some("mid".to_string()),
             retention_days: 7,
             raw_prompt_opt_in: false,
             classifier_version: "v0.2".to_string(),
@@ -1489,6 +1495,7 @@ mod tests {
 
         let fetched = db.autotier_get_config().unwrap();
         assert_eq!(fetched.mode, "off");
+        assert_eq!(fetched.advisory_candidate.as_deref(), Some("mid"));
         assert_eq!(fetched.retention_days, 7);
         assert_eq!(fetched.classifier_version, "v0.2");
 
@@ -1658,16 +1665,16 @@ mod tests {
     // --- Migration idempotency ---
 
     #[test]
-    fn migration_to_v18_is_idempotent() {
-        // 验证：迁移完成后 autotier 表存在且可写，版本号停在 18
+    fn migration_to_v19_is_idempotent() {
+        // 验证：迁移完成后 autotier 表存在且可写，版本号停在 19
         let conn = Connection::open_in_memory().unwrap();
         Database::create_tables_on_conn(&conn).unwrap();
         Database::apply_schema_migrations_on_conn(&conn).unwrap();
-        assert_eq!(Database::get_user_version(&conn).unwrap(), 18);
+        assert_eq!(Database::get_user_version(&conn).unwrap(), 19);
 
         // 再次运行迁移不应报错
         Database::apply_schema_migrations_on_conn(&conn).unwrap();
-        assert_eq!(Database::get_user_version(&conn).unwrap(), 18);
+        assert_eq!(Database::get_user_version(&conn).unwrap(), 19);
 
         // autotier 表存在
         assert!(Database::table_exists(&conn, "autotier_routing_decisions").unwrap());

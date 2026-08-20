@@ -477,6 +477,7 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS autotier_routing_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 mode TEXT NOT NULL DEFAULT 'shadow',
+                advisory_candidate TEXT,
                 retention_days INTEGER NOT NULL DEFAULT 30,
                 raw_prompt_opt_in INTEGER NOT NULL DEFAULT 0,
                 classifier_version TEXT NOT NULL,
@@ -749,6 +750,13 @@ impl Database {
                         );
                         Self::migrate_v17_to_v18(conn)?;
                         Self::set_user_version(conn, 18)?;
+                    }
+                    18 => {
+                        log::info!(
+                            "迁移数据库从 v18 到 v19（AutoTier: advisory candidate 独立字段）"
+                        );
+                        Self::migrate_v18_to_v19(conn)?;
+                        Self::set_user_version(conn, 19)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1762,6 +1770,17 @@ impl Database {
         crate::services::session_usage_codex::reset_codex_usage_on_conn(conn, &codex_dir)
     }
 
+    /// v18 → v19：将 advisory candidate 从 routing mode 中独立出来。
+    fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_config",
+            "advisory_candidate",
+            "TEXT",
+        )?;
+        Ok(())
+    }
+
     /// v17 → v18：AutoTier 表迁移
     ///
     /// 创建四张 `autotier_*` 表及索引（PRD §11）。
@@ -1806,6 +1825,7 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS autotier_routing_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 mode TEXT NOT NULL DEFAULT 'shadow',
+                advisory_candidate TEXT,
                 retention_days INTEGER NOT NULL DEFAULT 30,
                 raw_prompt_opt_in INTEGER NOT NULL DEFAULT 0,
                 classifier_version TEXT NOT NULL,
@@ -3810,7 +3830,7 @@ mod tests {
     }
 
     /// 真实库迁移冒烟：AUTOTIER_SMOKE_DB 指向一份上游 v17 真实库副本时，
-    /// 验证 v17→v18 迁移能建出 AutoTier 表且不改动既有明细。
+    /// 验证 v17→v19 迁移能建出 AutoTier 表和 advisory 字段且不改动既有明细。
     /// 未设置环境变量时直接通过（CI 无真实库）。
     #[test]
     fn migrate_real_v17_db_creates_autotier_tables() -> Result<(), AppError> {
@@ -3820,15 +3840,22 @@ mod tests {
         let conn = Connection::open(&path)?;
         let version_before = Database::get_user_version(&conn)?;
         assert!(
-            version_before == 17 || version_before == 18,
-            "冒烟库必须是 v17（待迁移）或 v18（已迁移过），实际 {version_before}"
+            version_before == 17 || version_before == 18 || version_before == 19,
+            "冒烟库必须是 v17/v18/v19，实际 {version_before}"
         );
         let logs_before: i64 =
             conn.query_row("SELECT COUNT(*) FROM proxy_request_logs", [], |r| r.get(0))?;
 
         Database::apply_schema_migrations_on_conn(&conn)?;
 
-        assert_eq!(Database::get_user_version(&conn)?, 18);
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let advisory_column_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('autotier_routing_config')
+             WHERE name = 'advisory_candidate'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(advisory_column_count, 1);
         for table in [
             "autotier_provider_slots",
             "autotier_routing_config",
