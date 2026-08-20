@@ -54,7 +54,7 @@ interface ConfigLoadErrorPayload {
 async function handleConfigLoadError(
   payload: ConfigLoadErrorPayload | null,
 ): Promise<void> {
-  const path = payload?.path ?? "~/.cc-switch/config.json";
+  const path = payload?.path ?? "~/.autotier/config.json";
   const detail = payload?.error ?? "Unknown error";
 
   await message(
@@ -121,7 +121,7 @@ async function bootstrap() {
     <React.StrictMode>
       <FrontendErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
+          <ThemeProvider defaultTheme="system" storageKey="autotier-theme">
             <UpdateProvider>
               <App />
               <Toaster />

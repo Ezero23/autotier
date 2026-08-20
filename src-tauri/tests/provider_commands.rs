@@ -16,7 +16,7 @@ use support::{
 };
 
 fn settings_path(home: &Path) -> PathBuf {
-    home.join(".cc-switch").join("settings.json")
+    home.join(".autotier").join("settings.json")
 }
 
 fn grokbuild_config(name: &str, endpoint: &str, api_key: &str) -> String {
