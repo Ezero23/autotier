@@ -1712,6 +1712,9 @@ pub fn run() {
             commands::autotier_get_decision_detail,
             commands::autotier_upsert_decision_label,
             commands::autotier_get_decision_label,
+            commands::autotier_export_decisions,
+            commands::autotier_replay_export,
+            commands::autotier_evaluate_export,
             // lightweight mode (for testing or low-resource environments)
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
