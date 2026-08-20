@@ -1708,6 +1708,10 @@ pub fn run() {
             commands::autotier_required_slots_status,
             commands::autotier_clear_decisions,
             commands::autotier_prune_decisions,
+            commands::autotier_query_decisions,
+            commands::autotier_get_decision_detail,
+            commands::autotier_upsert_decision_label,
+            commands::autotier_get_decision_label,
             // lightweight mode (for testing or low-resource environments)
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,

@@ -2,6 +2,7 @@
 
 mod auth;
 mod autotier;
+mod autotier_decisions;
 mod balance;
 mod codex_oauth;
 mod coding_plan;
@@ -40,6 +41,7 @@ mod workspace;
 
 pub use auth::*;
 pub use autotier::*;
+pub use autotier_decisions::*;
 pub use balance::*;
 pub use codex_oauth::*;
 pub use coding_plan::*;
