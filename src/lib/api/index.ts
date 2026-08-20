@@ -17,6 +17,14 @@ export { workspaceApi } from "./workspace";
 export * as configApi from "./config";
 export * as authApi from "./auth";
 export * as copilotApi from "./copilot";
+export { autotierApi } from "./autotier";
+export type {
+  AutotierRoutingConfig,
+  AutotierProviderSlot,
+  AutotierRequiredSlotsStatus,
+  AutotierSaveConfigInput,
+  AutotierCommandErrorCode,
+} from "./autotier";
 export type { ProviderSwitchEvent } from "./providers";
 export type { Prompt } from "./prompts";
 export type { Profile, ProfilePayload, ProfilesResponse } from "./profiles";
