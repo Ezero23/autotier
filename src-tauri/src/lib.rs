@@ -1715,6 +1715,8 @@ pub fn run() {
             commands::autotier_export_decisions,
             commands::autotier_replay_export,
             commands::autotier_evaluate_export,
+            commands::autotier_detect_legacy_data,
+            commands::autotier_import_legacy_data,
             // lightweight mode (for testing or low-resource environments)
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
