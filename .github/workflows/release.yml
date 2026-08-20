@@ -244,27 +244,41 @@ jobs:
         shell: bash
         timeout-minutes: 60
         env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SIGNING_ENABLED: ${{ steps.tauri_signing.outputs.signing_enabled }}
+          APPLE_SIGNING_IDENTITY_SAVED: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID_SECRET: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD_SECRET: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID_SECRET: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          max_attempts=3
+          # Empty APPLE_SIGNING_IDENTITY makes Tauri codesign with identity "" and fail.
+          unset APPLE_SIGNING_IDENTITY || true
+          unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID || true
+          if [ "${SIGNING_ENABLED}" = "true" ] && [ -n "${APPLE_SIGNING_IDENTITY_SAVED:-}" ]; then
+            export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY_SAVED}"
+          fi
+          if [ -n "${APPLE_ID_SECRET}" ]; then
+            export APPLE_ID="${APPLE_ID_SECRET}"
+            export APPLE_PASSWORD="${APPLE_PASSWORD_SECRET}"
+            export APPLE_TEAM_ID="${APPLE_TEAM_ID_SECRET}"
+          fi
+
+          max_attempts=1
+          if [ "${SIGNING_ENABLED}" = "true" ]; then
+            max_attempts=3
+          fi
           for attempt in $(seq 1 "$max_attempts"); do
-            echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
+            echo "=== macOS build attempt ${attempt}/${max_attempts} (signing=${SIGNING_ENABLED}) ==="
             if pnpm tauri build --target universal-apple-darwin; then
-              echo "✅ macOS build/notarization succeeded"
+              echo "✅ macOS build succeeded"
               exit 0
             fi
-
             if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "❌ macOS build/notarization failed after ${max_attempts} attempts" >&2
+              echo "❌ macOS build failed after ${max_attempts} attempts" >&2
               exit 1
             fi
-
             sleep_seconds=$((attempt * 60))
-            echo "⚠️ macOS build/notarization failed, retrying in ${sleep_seconds}s..."
+            echo "⚠️ macOS build failed, retrying in ${sleep_seconds}s..."
             sleep "$sleep_seconds"
           done
 
@@ -471,10 +485,8 @@ jobs:
             if (Test-Path $sigPath) {
               Copy-Item $sigPath (Join-Path release-assets ("$dest.sig"))
               Write-Host "Signature copied: $dest.sig"
-            } elseif ($isArm64) {
-              throw "Signature not found for $($msi.Name)"
             } else {
-              Write-Warning "Signature not found for $($msi.Name)"
+              Write-Warning "Signature not found for $($msi.Name) (unsigned build is OK)"
             }
           } elseif ($isArm64) {
             throw 'No Windows ARM64 MSI installer found'
@@ -596,10 +608,12 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-22.04
     needs: release
+    if: ${{ always() && !cancelled() }}
     permissions:
       contents: write
     steps:
       - name: Download built release artifacts
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: release-assets-*
@@ -609,8 +623,12 @@ jobs:
       - name: List downloaded release artifacts
         shell: bash
         run: |
-          set -euo pipefail
+          mkdir -p release-assets
           ls -la release-assets
+          if ! ls release-assets/* >/dev/null 2>&1; then
+            echo "❌ No platform artifacts uploaded — cannot publish" >&2
+            exit 1
+          fi
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v3
@@ -634,6 +652,7 @@ jobs:
             - **Linux (ARM64)**: `AutoTier-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 
             > Unsigned builds omit `.sig` updater artifacts until `TAURI_SIGNING_PRIVATE_KEY` is configured in repo secrets.
+            > macOS Gatekeeper will warn until Apple signing/notarization secrets are set.
 
             ### Shadow invariants (v0.1)
 
@@ -650,6 +669,7 @@ jobs:
     name: Assemble latest.json
     runs-on: ubuntu-22.04
     needs: publish-release
+    if: ${{ always() && !cancelled() && needs.publish-release.result == 'success' }}
     permissions:
       contents: write
     steps:
