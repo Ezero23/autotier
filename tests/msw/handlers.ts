@@ -398,4 +398,231 @@ export const handlers = [
   ),
   http.post(`${TAURI_ENDPOINT}/reset_circuit_breaker`, () => success(true)),
   http.post(`${TAURI_ENDPOINT}/get_circuit_breaker_stats`, () => success(null)),
+
+  http.post(`${TAURI_ENDPOINT}/autotier_list_provider_slots`, () =>
+    success([]),
+  ),
+  http.post(
+    `${TAURI_ENDPOINT}/autotier_required_slots_status`,
+    async ({ request }) => {
+      const { providerId } = await withJson<{ providerId?: string }>(request);
+      return success({
+        provider_id: providerId ?? "",
+        complete: false,
+        present: [],
+        missing: ["cheap", "mid", "strong"],
+      });
+    },
+  ),
+  http.post(
+    `${TAURI_ENDPOINT}/autotier_upsert_provider_slot`,
+    async ({ request }) => {
+      const { slot } = await withJson<{ slot?: Record<string, unknown> }>(
+        request,
+      );
+      return success(slot ?? {});
+    },
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_delete_provider_slot`, () =>
+    success(1),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_get_routing_config`, () =>
+    success({
+      mode: "shadow",
+      retention_days: 30,
+      raw_prompt_opt_in: false,
+      classifier_version: "rules-v0.2",
+      feature_version: "claude-extractor-v0.2",
+      policy_version: "shadow-policy-v0.2",
+      capability_table_version: "capability-table-v0.1",
+      cost_model_version: "cost-model-v0.1",
+      cache_stats_version: "cache-stats-v0.1",
+      updated_at: 1,
+      degraded_from: null,
+    }),
+  ),
+  http.post(
+    `${TAURI_ENDPOINT}/autotier_save_routing_config`,
+    async ({ request }) => {
+      const { input } = await withJson<{
+        input?: { mode?: string; retention_days?: number };
+      }>(request);
+      return success({
+        mode: "shadow",
+        retention_days: input?.retention_days ?? 30,
+        raw_prompt_opt_in: false,
+        classifier_version: "rules-v0.2",
+        feature_version: "claude-extractor-v0.2",
+        policy_version: "shadow-policy-v0.2",
+        capability_table_version: "capability-table-v0.1",
+        cost_model_version: "cost-model-v0.1",
+        cache_stats_version: "cache-stats-v0.1",
+        updated_at: Date.now(),
+        degraded_from: input?.mode?.startsWith("forced_") ? input.mode : null,
+      });
+    },
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_clear_decisions`, () => success(null)),
+  http.post(`${TAURI_ENDPOINT}/autotier_prune_decisions`, () => success(0)),
+  http.post(`${TAURI_ENDPOINT}/autotier_query_decisions`, () =>
+    success({
+      items: [
+        {
+          decision_id: "d-msw-1",
+          created_at: 1_700_000_000_000,
+          completed_at: null,
+          app_type: "claude",
+          session_id_hash: "hash-demo",
+          mode: "shadow",
+          client_requested_model: "claude-sonnet-4-20250514",
+          initial_selected_provider: "provider-a",
+          baseline_outbound_model: "claude-sonnet-4-20250514",
+          baseline_outbound_provider: "provider-a",
+          recommended_slot: "cheap",
+          candidate_model: "claude-haiku",
+          candidate_provider: "provider-a",
+          actual_outbound_model: "claude-sonnet-4-20250514",
+          actual_outbound_provider: "provider-a",
+          complexity_score: 0.2,
+          confidence: 0.8,
+          safe_to_execute: false,
+          is_complete: false,
+          error_code: null,
+          user_label: null,
+          completion: {
+            decision_complete: false,
+            usage_linked: false,
+            missing_fields: ["usage_link"],
+          },
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_get_decision_detail`, () =>
+    success({
+      decision_id: "d-msw-1",
+      created_at: 1_700_000_000_000,
+      completed_at: null,
+      app_type: "claude",
+      session_id_hash: "hash-demo",
+      mode: "shadow",
+      client_requested_model: "claude-sonnet-4-20250514",
+      initial_selected_provider: "provider-a",
+      baseline_outbound_model: "claude-sonnet-4-20250514",
+      baseline_outbound_provider: "provider-a",
+      recommended_slot: "cheap",
+      candidate_model: "claude-haiku",
+      candidate_provider: "provider-a",
+      actual_outbound_model: "claude-sonnet-4-20250514",
+      actual_outbound_provider: "provider-a",
+      autotier_mutated_request: false,
+      upstream_message_id: null,
+      usage_request_id: null,
+      complexity_score: 0.2,
+      confidence: 0.8,
+      reason_codes_json: '["SHORT_USER_REQUEST"]',
+      unsafe_reasons_json: "[]",
+      safe_to_execute: false,
+      feature_json: "{}",
+      feature_version: "claude-extractor-v0.2",
+      classifier_version: "rules-v0.2",
+      policy_version: "shadow-policy-v0.2",
+      actual_input_tokens: null,
+      actual_output_tokens: null,
+      actual_cache_read_tokens: null,
+      actual_cache_write_5m_tokens: null,
+      actual_cache_write_1h_tokens: null,
+      actual_cost_usd: null,
+      candidate_cost_low_usd: "0.001",
+      candidate_cost_base_usd: "0.002",
+      candidate_cost_high_usd: "0.003",
+      cost_assumptions_json: "[]",
+      status_code: null,
+      outcome: null,
+      retry_count: 0,
+      fallback_count: 0,
+      is_complete: false,
+      error_code: null,
+      user_label: null,
+      completion: {
+        decision_complete: false,
+        usage_linked: false,
+        missing_fields: ["usage_link"],
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_upsert_decision_label`, () =>
+    success({
+      decision_id: "d-msw-1",
+      label: "correct",
+      reason: null,
+      note: null,
+      created_at: 1,
+      updated_at: 1,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_get_decision_label`, () =>
+    success(null),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_export_decisions`, () =>
+    success({
+      output_dir: "/tmp/autotier-export",
+      manifest: {
+        export_schema_version: 1,
+        generated_at: "2026-01-01T00:00:00Z",
+        decision_count: 1,
+        label_count: 0,
+        contains_raw_prompt: false,
+        contains_credentials: false,
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_replay_export`, () =>
+    success({
+      replayed: 1,
+      matched: 1,
+      mismatches: [],
+      malformed_rows: [],
+      manifest: {
+        export_schema_version: 1,
+        generated_at: "2026-01-01T00:00:00Z",
+        decision_count: 1,
+        label_count: 0,
+        contains_raw_prompt: false,
+        contains_credentials: false,
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_evaluate_export`, () =>
+    success({
+      sessions: 1,
+      metrics: {
+        tune_count: 1,
+        holdout_count: 0,
+        strong_recall: 0,
+        unsafe_downgrade: 0,
+        cache_adjusted_saving_usd: 0,
+        holdout_sample_sufficient: false,
+        warnings: ["holdout sample size 0 < minimum 30"],
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_detect_legacy_data`, () =>
+    success({
+      legacy_dir: "/home/user/.cc-switch",
+      legacy_db_exists: false,
+      autotier_dir: "/home/user/.autotier",
+      autotier_db_exists: false,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_import_legacy_data`, () =>
+    success({
+      imported_from: "/home/user/.cc-switch/cc-switch.db",
+      imported_to: "/home/user/.autotier/autotier.db",
+      backup_path: null,
+    }),
+  ),
 ];

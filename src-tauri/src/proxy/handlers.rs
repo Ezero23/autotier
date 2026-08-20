@@ -186,31 +186,7 @@ async fn handle_messages_for_app(
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
 
-    // AutoTier Shadow Observe（Phase 4）：仅提取特征+生成决策记录，不改请求/不阻塞转发。
-    // 配置非 shadow 模式时跳过；DB 写入在 tokio::spawn 里异步完成，失败只 log。
-    {
-        let autotier_config = state.db.autotier_get_config().unwrap_or_default();
-        if crate::autotier::is_shadow_enabled(&autotier_config) {
-            let decision_id = uuid::Uuid::new_v4().to_string();
-            let (row, _) = crate::autotier::build_shadow_row(
-                &crate::autotier::ShadowInput {
-                    decision_id,
-                    app_type: ctx.app_type.clone(),
-                    session_id: ctx.session_id.clone(),
-                    request_model: ctx.request_model.clone(),
-                    provider_id: ctx.provider.id.clone(),
-                },
-                &body,
-                &autotier_config,
-            );
-            let db = state.db.clone();
-            tokio::spawn(async move {
-                if let Err(e) = db.autotier_upsert_decision(&row) {
-                    log::warn!("[AutoTier] shadow decision store failed: {e}");
-                }
-            });
-        }
-    }
+    maybe_observe_autotier_shadow(&state, &mut ctx, &body);
 
     let raw_endpoint = uri
         .path_and_query()
@@ -245,6 +221,7 @@ async fn handle_messages_for_app(
                 ctx.provider = provider;
             }
             log_forward_error(&state, &ctx, is_stream, &err.error);
+            enqueue_autotier_finalize_error(&state, &ctx, &err.error);
             return Err(err.error);
         }
     };
@@ -252,6 +229,7 @@ async fn handle_messages_for_app(
     let connection_guard = result.connection_guard.take();
     ctx.outbound_model = result.outbound_model.take();
     ctx.provider = result.provider;
+    enqueue_autotier_finalize_success(&state, &ctx, result.response.status().as_u16());
     let api_format = result
         .claude_api_format
         .as_deref()
@@ -291,6 +269,103 @@ async fn handle_messages_for_app(
         connection_guard,
     )
     .await
+}
+
+/// Phase 4C：Shadow 入口生成 `decision_id` 并挂到 `RequestContext`，只读 Create。
+/// Off / 配置失败 / Secret 失败全部旁路，不改请求、不阻塞转发。
+fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, body: &Value) {
+    let Some(autotier_config) =
+        crate::autotier::shadow_config_for_observe(state.db.autotier_get_config())
+    else {
+        return;
+    };
+    let secret = match crate::autotier::load_or_create_session_secret() {
+        Ok(secret) => secret,
+        Err(e) => {
+            log::warn!("[AutoTier] session secret unavailable, skip shadow: {e}");
+            return;
+        }
+    };
+    let decision_id = uuid::Uuid::new_v4().to_string();
+    let initial_selected_provider = ctx.provider.id.clone();
+    let (row, _) = crate::autotier::build_shadow_row(
+        &crate::autotier::ShadowInput {
+            decision_id: decision_id.clone(),
+            app_type: ctx.app_type.clone(),
+            session_id: ctx.session_id.clone(),
+            request_model: ctx.request_model.clone(),
+            provider_id: initial_selected_provider.clone(),
+        },
+        body,
+        &autotier_config,
+        &secret,
+    );
+    crate::autotier::enqueue_create(state.db.clone(), row);
+    ctx.autotier = Some(super::handler_context::AutotierRequestState {
+        decision_id,
+        initial_selected_provider,
+    });
+}
+
+fn enqueue_autotier_finalize_success(state: &ProxyState, ctx: &RequestContext, status_code: u16) {
+    enqueue_autotier_finalize(state, ctx, Some(status_code as i64), "success", None);
+}
+
+fn enqueue_autotier_finalize_error(state: &ProxyState, ctx: &RequestContext, error: &ProxyError) {
+    enqueue_autotier_finalize(
+        state,
+        ctx,
+        Some(map_proxy_error_to_status(error) as i64),
+        "error",
+        Some(autotier_error_code(error)),
+    );
+}
+
+/// Forwarder 完成后捕获真实 Baseline/Actual（Shadow 两者相同，证明未改写）。
+fn enqueue_autotier_finalize(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: Option<i64>,
+    outcome: &str,
+    error_code: Option<String>,
+) {
+    let Some(autotier) = ctx.autotier.as_ref() else {
+        return;
+    };
+    let outbound_model = ctx.outbound_model.clone();
+    let outbound_provider = Some(ctx.provider.id.clone());
+    let fallback_count = if ctx.provider.id != autotier.initial_selected_provider {
+        Some(1)
+    } else {
+        Some(0)
+    };
+    crate::autotier::enqueue_finalize(
+        state.db.clone(),
+        crate::autotier::FinalizeEvent {
+            decision_id: autotier.decision_id.clone(),
+            completed_at: chrono::Utc::now().timestamp_millis(),
+            baseline_outbound_model: outbound_model.clone(),
+            baseline_outbound_provider: outbound_provider.clone(),
+            actual_outbound_model: outbound_model,
+            actual_outbound_provider: outbound_provider,
+            status_code,
+            outcome: Some(outcome.to_string()),
+            fallback_count,
+            error_code,
+            ..Default::default()
+        },
+    );
+}
+
+fn autotier_error_code(error: &ProxyError) -> String {
+    match error {
+        ProxyError::UpstreamError { status, .. } => format!("upstream_{status}"),
+        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "timeout".into(),
+        ProxyError::ForwardFailed(_) => "forward_failed".into(),
+        ProxyError::MaxRetriesExceeded => "max_retries_exceeded".into(),
+        ProxyError::NoAvailableProvider => "no_available_provider".into(),
+        _ => "error".into(),
+    }
 }
 
 fn validate_claude_desktop_gateway_auth(
@@ -334,6 +409,7 @@ struct ClaudeUsageLog {
     latency_ms: u64,
     status_code: u16,
     is_streaming: bool,
+    decision_id: Option<String>,
 }
 
 fn prepare_claude_usage_log(
@@ -367,6 +443,7 @@ fn prepare_claude_usage_log(
         latency_ms: ctx.latency_ms(),
         status_code,
         is_streaming,
+        decision_id: ctx.autotier.as_ref().map(|a| a.decision_id.clone()),
     })
 }
 
@@ -384,6 +461,7 @@ async fn write_claude_usage_log(state: &ProxyState, log: ClaudeUsageLog) {
         log.is_streaming,
         log.status_code,
         Some(log.session_id),
+        log.decision_id,
     )
     .await;
 }
@@ -490,6 +568,7 @@ async fn handle_claude_transform(
             let status_code = status.as_u16();
             let start_time = ctx.start_time;
             let session_id = ctx.session_id.clone();
+            let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
             // 用 ctx 的 app_type：Claude Desktop 网关也走此转换路径，硬编码
             // "claude" 会把 claude-desktop 的行错记到 claude 名下
             let app_type_str = ctx.app_type_str;
@@ -510,6 +589,7 @@ async fn handle_claude_transform(
                         let session_id = session_id.clone();
                         let request_model = request_model.clone();
                         let outbound_model = fallback_model.clone();
+                        let decision_id = decision_id.clone();
 
                         tokio::spawn(async move {
                             log_usage(
@@ -525,6 +605,7 @@ async fn handle_claude_transform(
                                 true,
                                 status_code,
                                 Some(session_id),
+                                decision_id,
                             )
                             .await;
                         });
@@ -1278,6 +1359,7 @@ async fn handle_codex_responses_namespace_restore(
                     let state = state.clone();
                     let provider_id = ctx.provider.id.clone();
                     let session_id = ctx.session_id.clone();
+                    let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
                     let latency_ms = ctx.latency_ms();
                     async move {
                         log_usage(
@@ -1293,6 +1375,7 @@ async fn handle_codex_responses_namespace_restore(
                             false,
                             status.as_u16(),
                             Some(session_id),
+                            decision_id,
                         )
                         .await;
                     }
@@ -1362,6 +1445,7 @@ async fn handle_codex_chat_to_responses_transform(
             let app_type_str = ctx.app_type_str;
             let start_time = ctx.start_time;
             let session_id = ctx.session_id.clone();
+            let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
 
             Some(SseUsageCollector::new(
                 start_time,
@@ -1390,6 +1474,7 @@ async fn handle_codex_chat_to_responses_transform(
                     let request_model = request_model.clone();
                     let outbound_model = fallback_model.clone();
                     let session_id = session_id.clone();
+                    let decision_id = decision_id.clone();
 
                     tokio::spawn(async move {
                         log_usage(
@@ -1405,6 +1490,7 @@ async fn handle_codex_chat_to_responses_transform(
                             true,
                             status.as_u16(),
                             Some(session_id),
+                            decision_id,
                         )
                         .await;
                     });
@@ -1511,6 +1597,7 @@ async fn handle_codex_chat_to_responses_transform(
             let state = state.clone();
             let provider_id = ctx.provider.id.clone();
             let session_id = ctx.session_id.clone();
+            let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
             let latency_ms = ctx.latency_ms();
             async move {
                 log_usage(
@@ -1526,6 +1613,7 @@ async fn handle_codex_chat_to_responses_transform(
                     false,
                     status.as_u16(),
                     Some(session_id),
+                    decision_id,
                 )
                 .await;
             }
@@ -1676,6 +1764,7 @@ async fn handle_codex_anthropic_to_responses_transform(
             let state = state.clone();
             let provider_id = ctx.provider.id.clone();
             let session_id = ctx.session_id.clone();
+            let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
             let latency_ms = ctx.latency_ms();
             async move {
                 log_usage(
@@ -1691,6 +1780,7 @@ async fn handle_codex_anthropic_to_responses_transform(
                     false,
                     status.as_u16(),
                     Some(session_id),
+                    decision_id,
                 )
                 .await;
             }
@@ -1741,6 +1831,7 @@ fn build_codex_anthropic_sse_response(
         let app_type_str = ctx.app_type_str;
         let start_time = ctx.start_time;
         let session_id = ctx.session_id.clone();
+        let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
 
         Some(SseUsageCollector::new(
             start_time,
@@ -1763,6 +1854,7 @@ fn build_codex_anthropic_sse_response(
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
                 let session_id = session_id.clone();
+                let decision_id = decision_id.clone();
 
                 tokio::spawn(async move {
                     log_usage(
@@ -1778,6 +1870,7 @@ fn build_codex_anthropic_sse_response(
                         true,
                         status.as_u16(),
                         Some(session_id),
+                        decision_id,
                     )
                     .await;
                 });
@@ -2814,6 +2907,7 @@ async fn log_usage(
     is_streaming: bool,
     status_code: u16,
     session_id: Option<String>,
+    decision_id: Option<String>,
 ) {
     use super::usage::logger::UsageLogger;
 
@@ -2833,6 +2927,20 @@ async fn log_usage(
 
     let dedup_scope = super::usage::parser::dedup_scope_for_app(app_type, provider_id);
     let request_id = usage.dedup_request_id(dedup_scope);
+
+    if let Some(decision_id) = decision_id {
+        crate::autotier::enqueue_usage_finalize(
+            state.db.clone(),
+            decision_id,
+            usage.message_id.clone(),
+            request_id.clone(),
+            usage.input_tokens as i64,
+            usage.output_tokens as i64,
+            usage.cache_read_tokens as i64,
+            usage.cache_creation_tokens as i64,
+            status_code as i64,
+        );
+    }
 
     if let Err(e) = logger.log_with_calculation(
         request_id,

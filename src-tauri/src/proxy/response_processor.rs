@@ -494,6 +494,7 @@ pub(crate) fn create_usage_collector(
     let stream_parser = parser_config.stream_parser;
     let model_extractor = parser_config.model_extractor;
     let session_id = ctx.session_id.clone();
+    let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
 
     Some(SseUsageCollector::new(
         start_time,
@@ -508,6 +509,7 @@ pub(crate) fn create_usage_collector(
                 let session_id = session_id.clone();
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
+                let decision_id = decision_id.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
@@ -523,6 +525,7 @@ pub(crate) fn create_usage_collector(
                         true, // is_streaming
                         status_code,
                         Some(session_id),
+                        decision_id,
                     )
                     .await;
                 });
@@ -534,6 +537,7 @@ pub(crate) fn create_usage_collector(
                 let session_id = session_id.clone();
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
+                let decision_id = decision_id.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
@@ -549,6 +553,7 @@ pub(crate) fn create_usage_collector(
                         true, // is_streaming
                         status_code,
                         Some(session_id),
+                        decision_id,
                     )
                     .await;
                 });
@@ -587,6 +592,7 @@ fn spawn_log_usage(
         .unwrap_or_else(|| ctx.request_model.clone());
     let latency_ms = ctx.latency_ms();
     let session_id = ctx.session_id.clone();
+    let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
 
     tokio::spawn(async move {
         log_usage_internal(
@@ -602,6 +608,7 @@ fn spawn_log_usage(
             is_streaming,
             status_code,
             Some(session_id),
+            decision_id,
         )
         .await;
     });
@@ -635,6 +642,7 @@ async fn log_usage_internal(
     is_streaming: bool,
     status_code: u16,
     session_id: Option<String>,
+    decision_id: Option<String>,
 ) {
     use super::usage::logger::UsageLogger;
 
@@ -649,6 +657,20 @@ async fn log_usage_internal(
 
     let dedup_scope = super::usage::parser::dedup_scope_for_app(app_type, provider_id);
     let request_id = usage.dedup_request_id(dedup_scope);
+
+    if let Some(decision_id) = decision_id {
+        crate::autotier::enqueue_usage_finalize(
+            state.db.clone(),
+            decision_id,
+            usage.message_id.clone(),
+            request_id.clone(),
+            usage.input_tokens as i64,
+            usage.output_tokens as i64,
+            usage.cache_read_tokens as i64,
+            usage.cache_creation_tokens as i64,
+            status_code as i64,
+        );
+    }
 
     log::debug!(
         "[{app_type}] 记录请求日志: id={request_id}, provider={provider_id}, model={model}, streaming={is_streaming}, status={status_code}, latency_ms={latency_ms}, first_token_ms={first_token_ms:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
@@ -1107,6 +1129,7 @@ mod tests {
             false,
             200,
             None,
+            None,
         )
         .await;
 
@@ -1176,6 +1199,7 @@ mod tests {
             None,
             false,
             200,
+            None,
             None,
         )
         .await;
@@ -1256,6 +1280,7 @@ mod tests {
             None,
             false,
             200,
+            None,
             None,
         )
         .await;

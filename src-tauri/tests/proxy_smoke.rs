@@ -104,38 +104,53 @@ fn build_non_stream_response(message_id: &str, model: &str, with_tool: bool) -> 
 
 fn build_sse_stream(message_id: &str, model: &str) -> String {
     let events = [
-        ("message_start", json!({
-            "type": "message_start",
-            "message": {
-                "id": message_id,
-                "type": "message",
-                "role": "assistant",
-                "model": model,
-                "content": [],
-                "stop_reason": null,
-                "stop_sequence": null,
-                "usage": {"input_tokens": 15, "output_tokens": 1}
-            }
-        })),
-        ("content_block_start", json!({
-            "type": "content_block_start",
-            "index": 0,
-            "content_block": {"type": "text", "text": ""}
-        })),
-        ("content_block_delta", json!({
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {"type": "text_delta", "text": "mock stream reply"}
-        })),
-        ("content_block_stop", json!({
-            "type": "content_block_stop",
-            "index": 0
-        })),
-        ("message_delta", json!({
-            "type": "message_delta",
-            "delta": {"stop_reason": "end_turn", "stop_sequence": null},
-            "usage": {"output_tokens": 9}
-        })),
+        (
+            "message_start",
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": message_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": model,
+                    "content": [],
+                    "stop_reason": null,
+                    "stop_sequence": null,
+                    "usage": {"input_tokens": 15, "output_tokens": 1}
+                }
+            }),
+        ),
+        (
+            "content_block_start",
+            json!({
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""}
+            }),
+        ),
+        (
+            "content_block_delta",
+            json!({
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": "mock stream reply"}
+            }),
+        ),
+        (
+            "content_block_stop",
+            json!({
+                "type": "content_block_stop",
+                "index": 0
+            }),
+        ),
+        (
+            "message_delta",
+            json!({
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn", "stop_sequence": null},
+                "usage": {"output_tokens": 9}
+            }),
+        ),
         ("message_stop", json!({"type": "message_stop"})),
     ];
 
@@ -350,7 +365,7 @@ async fn proxy_smoke_claude_request_chain() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let home = ensure_test_home().to_path_buf();
-    let db_path = home.join(".cc-switch").join("cc-switch.db");
+    let db_path = home.join(".autotier").join("autotier.db");
 
     let state = create_test_state().expect("create test state");
     let db = state.db.clone();
@@ -364,7 +379,8 @@ async fn proxy_smoke_claude_request_chain() {
     // ---- Provider 配置：p1 指向 good mock，设为 claude 当前供应商 ----
     let p1 = make_claude_provider("p1", "Mock Primary", good_port);
     db.save_provider("claude", &p1).expect("save provider p1");
-    db.set_current_provider("claude", "p1").expect("set current");
+    db.set_current_provider("claude", "p1")
+        .expect("set current");
 
     // ---- 启动真实代理：listen_port=0 让 OS 分配随机端口 ----
     let mut proxy_config = db.get_proxy_config().await.expect("read proxy config");
@@ -469,7 +485,11 @@ async fn proxy_smoke_claude_request_chain() {
         ],
         "场景 b SSE 事件序列应符合 Anthropic 协议"
     );
-    assert_eq!(event_seq.last(), Some(&"message_stop"), "应以 message_stop 结束");
+    assert_eq!(
+        event_seq.last(),
+        Some(&"message_stop"),
+        "应以 message_stop 结束"
+    );
     let logs = wait_for_log_rows(&db_path, 2, Duration::from_secs(3)).await;
     let row_b = logs.last().expect("场景 b 应落一条日志");
     let msg_b = row_b
@@ -481,12 +501,18 @@ async fn proxy_smoke_claude_request_chain() {
         "出站证据: model={} provider={} message_id={msg_b}",
         row_b.model, row_b.provider_id
     );
-    print_log_rows("场景 b 后 proxy_request_logs（最后一行）", &logs[logs.len() - 1..]);
+    print_log_rows(
+        "场景 b 后 proxy_request_logs（最后一行）",
+        &logs[logs.len() - 1..],
+    );
     assert_eq!(row_b.provider_id, "p1");
     assert_eq!(row_b.status_code, 200);
     assert_eq!(row_b.is_streaming, 1, "流式请求日志应标记 is_streaming=1");
     assert!(row_b.input_tokens > 0 && row_b.output_tokens > 0);
-    assert!(row_b.first_token_ms.is_some(), "流式日志应记录 first_token_ms");
+    assert!(
+        row_b.first_token_ms.is_some(),
+        "流式日志应记录 first_token_ms"
+    );
 
     // ========================================================================
     // 场景 c：tools → 上游收到 tools 字段，tool_use 透传
@@ -520,7 +546,10 @@ async fn proxy_smoke_claude_request_chain() {
     let tools_seen = upstream_req.get("tools").cloned().unwrap_or(Value::Null);
     println!("上游 mock 收到的 tools 字段: {tools_seen}");
     assert!(
-        tools_seen.as_array().map(|a| !a.is_empty()).unwrap_or(false),
+        tools_seen
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false),
         "上游应收到 tools 字段（透传未被剥离）"
     );
     let block_type = json_c
@@ -539,7 +568,10 @@ async fn proxy_smoke_claude_request_chain() {
         "出站证据: model={} provider={} message_id={msg_c}",
         row_c.model, row_c.provider_id
     );
-    print_log_rows("场景 c 后 proxy_request_logs（最后一行）", &logs[logs.len() - 1..]);
+    print_log_rows(
+        "场景 c 后 proxy_request_logs（最后一行）",
+        &logs[logs.len() - 1..],
+    );
     assert_eq!(row_c.status_code, 200);
 
     // ========================================================================
@@ -567,7 +599,10 @@ async fn proxy_smoke_claude_request_chain() {
         "出站证据: model={} provider={} message_id=（上游 500，无 message id）",
         row_d.model, row_d.provider_id
     );
-    print_log_rows("场景 d 后 proxy_request_logs（最后一行）", &logs[logs.len() - 1..]);
+    print_log_rows(
+        "场景 d 后 proxy_request_logs（最后一行）",
+        &logs[logs.len() - 1..],
+    );
     assert_eq!(row_d.provider_id, "p1");
     assert_eq!(row_d.status_code, 500);
     assert!(
@@ -585,7 +620,8 @@ async fn proxy_smoke_claude_request_chain() {
     pbackup.sort_index = Some(2);
     db.save_provider("claude", &pfail).expect("save pfail");
     db.save_provider("claude", &pbackup).expect("save pbackup");
-    db.add_to_failover_queue("claude", "pfail").expect("queue pfail");
+    db.add_to_failover_queue("claude", "pfail")
+        .expect("queue pfail");
     db.add_to_failover_queue("claude", "pbackup")
         .expect("queue pbackup");
     db.set_current_provider("claude", "pfail")
@@ -598,8 +634,10 @@ async fn proxy_smoke_claude_request_chain() {
     db.update_proxy_config_for_app(app_cfg)
         .await
         .expect("enable auto failover");
-    println!("failover 触发条件: auto_failover_enabled=true + 队列 [pfail, pbackup]；\
-              上游 500 属于 Retryable 错误（forwarder.rs:2678 状态码分桶），切换到队列下一家");
+    println!(
+        "failover 触发条件: auto_failover_enabled=true + 队列 [pfail, pbackup]；\
+              上游 500 属于 Retryable 错误（forwarder.rs:2678 状态码分桶），切换到队列下一家"
+    );
 
     let resp = send(request_body("claude-sonnet-4-6"), "smoke-e").await;
     let status_e = resp.status().as_u16();
@@ -626,12 +664,22 @@ async fn proxy_smoke_claude_request_chain() {
         !backup_mock.requests.lock().unwrap().is_empty(),
         "pbackup 应实际接到 failover 后的请求"
     );
-    let outbound_model_e = backup_mock.seen_models().last().cloned().unwrap_or_default();
+    let outbound_model_e = backup_mock
+        .seen_models()
+        .last()
+        .cloned()
+        .unwrap_or_default();
 
     let logs = wait_for_log_rows(&db_path, 5, Duration::from_secs(3)).await;
     let row_e = logs.last().expect("场景 e 应落一条日志");
-    println!("出站证据: model={outbound_model_e} provider={} message_id={msg_e}", row_e.provider_id);
-    print_log_rows("场景 e 后 proxy_request_logs（最后一行）", &logs[logs.len() - 1..]);
+    println!(
+        "出站证据: model={outbound_model_e} provider={} message_id={msg_e}",
+        row_e.provider_id
+    );
+    print_log_rows(
+        "场景 e 后 proxy_request_logs（最后一行）",
+        &logs[logs.len() - 1..],
+    );
     assert_eq!(
         row_e.provider_id, "pbackup",
         "failover 实际出站 Provider 应为 pbackup"

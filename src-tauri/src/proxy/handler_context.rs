@@ -23,6 +23,15 @@ pub struct StreamingTimeoutConfig {
     pub idle_timeout: u64,
 }
 
+/// AutoTier 单请求句柄。仅 Shadow 观测启用时存在；Off 保持 `None` 全旁路。
+#[derive(Debug, Clone)]
+pub struct AutotierRequestState {
+    /// Handler 入口生成的请求级主键，Create/Finalize 共用。
+    pub decision_id: String,
+    /// Provider Router 首次选中的 Provider，与 Failover 后的实际出站区分。
+    pub initial_selected_provider: String,
+}
+
 /// 请求上下文
 ///
 /// 贯穿整个请求生命周期，包含：
@@ -70,6 +79,8 @@ pub struct RequestContext {
     pub optimizer_config: OptimizerConfig,
     /// Copilot 优化器配置
     pub copilot_optimizer_config: CopilotOptimizerConfig,
+    /// AutoTier Shadow 观测句柄。Off 或配置失败时为 `None`，主路径不入队。
+    pub autotier: Option<AutotierRequestState>,
 }
 
 impl RequestContext {
@@ -173,6 +184,7 @@ impl RequestContext {
             rectifier_config,
             optimizer_config,
             copilot_optimizer_config,
+            autotier: None,
         })
     }
 

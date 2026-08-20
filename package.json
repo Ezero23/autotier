@@ -1,7 +1,7 @@
 {
-  "name": "cc-switch",
+  "name": "autotier",
   "version": "3.20.0",
-  "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
+  "description": "AutoTier — local-first Shadow routing for Claude Code and Agent CLIs",
   "type": "module",
   "scripts": {
     "dev": "pnpm tauri dev",

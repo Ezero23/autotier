@@ -9,11 +9,10 @@
 
 use crate::app_config::AppType;
 use crate::database::{AutotierDecisionRow, AutotierRoutingConfigDto};
-use sha2::{Digest, Sha256};
 
 use super::{
-    extract_features, shadow_decide, DecisionInput, RoutingDecision, RoutingMode,
-    SessionIdHash, FEATURE_VERSION,
+    cost::initial_cost_assumptions_json, extract_features, hash_session_id, shadow_decide,
+    DecisionInput, RoutingDecision, RoutingMode, FEATURE_VERSION,
 };
 
 /// 检查配置是否启用 Shadow 观测。
@@ -23,13 +22,18 @@ pub fn is_shadow_enabled(config: &AutotierRoutingConfigDto) -> bool {
     config.mode == "shadow"
 }
 
-/// 对 Session ID 做 SHA-256 hex 哈希。
-///
-/// Session ID 原文不进入决策持久化结构，只存哈希（PRD §9.1 隐私约束）。
-pub fn hash_session_id(session_id: &str) -> SessionIdHash {
-    let mut hasher = Sha256::new();
-    hasher.update(session_id.as_bytes());
-    SessionIdHash(format!("{:x}", hasher.finalize()))
+/// 配置读取成功且 mode=shadow 时才观测；读取失败则旁路（不启用 Shadow）。
+pub fn shadow_config_for_observe<E: std::fmt::Display>(
+    result: Result<AutotierRoutingConfigDto, E>,
+) -> Option<AutotierRoutingConfigDto> {
+    match result {
+        Ok(config) if is_shadow_enabled(&config) => Some(config),
+        Ok(_) => None,
+        Err(e) => {
+            log::warn!("[AutoTier] config read failed, skip shadow: {e}");
+            None
+        }
+    }
 }
 
 /// Shadow 观测所需的请求元数据。
@@ -46,7 +50,11 @@ pub struct ShadowInput {
 
 /// 构建 Shadow 观测数据库行。
 ///
-/// Shadow 不变量（PRD §7.3 FR-DEC-003）：
+/// 入口阶段只记录客户端请求组与候选建议。Baseline/Actual 必须等 Forwarder
+/// 回填真实出站（Phase 4C），此处保持 `None`，不得把入口 `request_model` /
+/// 初始 Provider 冒充为基线或实际出站。
+///
+/// Shadow 不变量（PRD §7.3 FR-DEC-003）在入口对 `None == None` 成立：
 /// - `autotier_mutated_request = false`
 /// - `actual_outbound_* == baseline_outbound_*`
 ///
@@ -55,8 +63,9 @@ pub fn build_shadow_row(
     input: &ShadowInput,
     body: &serde_json::Value,
     _config: &AutotierRoutingConfigDto,
+    secret: &[u8],
 ) -> (AutotierDecisionRow, RoutingDecision) {
-    let session_hash = hash_session_id(&input.session_id);
+    let session_hash = hash_session_id(&input.session_id, secret);
     let features = extract_features(body, input.app_type.clone(), &session_hash.0);
 
     let decision_input = DecisionInput {
@@ -84,8 +93,8 @@ pub fn build_shadow_row(
             initial_selected_provider: Some(input.provider_id.clone()),
         },
         baseline_outbound: super::BaselineOutboundFields {
-            baseline_outbound_model: Some(input.request_model.clone()),
-            baseline_outbound_provider: Some(input.provider_id.clone()),
+            baseline_outbound_model: None,
+            baseline_outbound_provider: None,
         },
         candidate: super::CandidateFields {
             recommended_slot: engine.recommended_slot,
@@ -93,8 +102,8 @@ pub fn build_shadow_row(
             candidate_provider: None,
         },
         actual_outbound: super::ActualOutboundFields {
-            actual_outbound_model: Some(input.request_model.clone()),
-            actual_outbound_provider: Some(input.provider_id.clone()),
+            actual_outbound_model: None,
+            actual_outbound_provider: None,
         },
         autotier_mutated_request: false,
         complexity_score: engine.complexity_score,
@@ -121,7 +130,10 @@ pub fn build_shadow_row(
         initial_selected_provider: decision.client_request.initial_selected_provider.clone(),
 
         baseline_outbound_model: decision.baseline_outbound.baseline_outbound_model.clone(),
-        baseline_outbound_provider: decision.baseline_outbound.baseline_outbound_provider.clone(),
+        baseline_outbound_provider: decision
+            .baseline_outbound
+            .baseline_outbound_provider
+            .clone(),
 
         recommended_slot: decision
             .candidate
@@ -140,8 +152,10 @@ pub fn build_shadow_row(
 
         complexity_score: Some(decision.complexity_score as f64),
         confidence: Some(decision.confidence as f64),
-        reason_codes_json: serde_json::to_string(&decision.reason_codes).unwrap_or_else(|_| "[]".into()),
-        unsafe_reasons_json: serde_json::to_string(&decision.unsafe_reasons).unwrap_or_else(|_| "[]".into()),
+        reason_codes_json: serde_json::to_string(&decision.reason_codes)
+            .unwrap_or_else(|_| "[]".into()),
+        unsafe_reasons_json: serde_json::to_string(&decision.unsafe_reasons)
+            .unwrap_or_else(|_| "[]".into()),
         safe_to_execute: decision.safe_to_execute,
 
         feature_json: serde_json::to_string(&features).unwrap_or_else(|_| "{}".into()),
@@ -159,7 +173,7 @@ pub fn build_shadow_row(
         candidate_cost_low_usd: None,
         candidate_cost_base_usd: None,
         candidate_cost_high_usd: None,
-        cost_assumptions_json: "[]".into(),
+        cost_assumptions_json: initial_cost_assumptions_json(body),
 
         status_code: None,
         outcome: None,
@@ -179,9 +193,12 @@ pub fn build_shadow_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::autotier::hash_session_id;
     use crate::autotier::ModelSlot;
     use crate::database::AutotierRoutingConfigDto;
     use serde_json::json;
+
+    const TEST_SECRET: [u8; 32] = [0x11; 32];
 
     fn short_input(model: &str, provider: &str) -> ShadowInput {
         ShadowInput {
@@ -201,19 +218,23 @@ mod tests {
     }
 
     #[test]
-    fn shadow_preserves_model_and_provider() {
+    fn shadow_preserves_client_request_and_leaves_outbound_unset() {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (row, _dec) = build_shadow_row(&input, &body, &config);
+        let (row, _dec) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert_eq!(row.client_requested_model, "claude-sonnet-4-20250514");
-        assert_eq!(row.baseline_outbound_model.as_deref(), Some("claude-sonnet-4-20250514"));
-        assert_eq!(row.actual_outbound_model.as_deref(), Some("claude-sonnet-4-20250514"));
-        assert_eq!(row.baseline_outbound_provider.as_deref(), Some("provider-a"));
-        assert_eq!(row.actual_outbound_provider.as_deref(), Some("provider-a"));
+        assert_eq!(row.initial_selected_provider.as_deref(), Some("provider-a"));
+        assert_eq!(row.baseline_outbound_model, None);
+        assert_eq!(row.actual_outbound_model, None);
+        assert_eq!(row.baseline_outbound_provider, None);
+        assert_eq!(row.actual_outbound_provider, None);
+        assert_eq!(row.candidate_model, None);
+        assert_eq!(row.candidate_provider, None);
         assert!(!row.autotier_mutated_request);
         assert!(!row.is_complete);
+        assert!(!row.safe_to_execute);
     }
 
     #[test]
@@ -221,7 +242,7 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (_row, decision) = build_shadow_row(&input, &body, &config);
+        let (_row, decision) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert!(decision.is_shadow_safe(), "shadow invariant must hold");
     }
@@ -237,12 +258,13 @@ mod tests {
     }
 
     #[test]
-    fn hash_session_id_is_deterministic() {
-        let h1 = hash_session_id("sess-xyz");
-        let h2 = hash_session_id("sess-xyz");
+    fn hash_session_id_uses_hmac_not_raw_session() {
+        let h1 = hash_session_id("sess-xyz", &TEST_SECRET);
+        let h2 = hash_session_id("sess-xyz", &TEST_SECRET);
         assert_eq!(h1.0, h2.0);
         assert!(!h1.0.is_empty());
         assert_ne!(h1.0, "sess-xyz");
+        assert!(!h1.0.contains("sess-xyz"));
     }
 
     #[test]
@@ -250,7 +272,7 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (row, _) = build_shadow_row(&input, &body, &config);
+        let (row, _) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert_eq!(
             row.recommended_slot.as_deref(),
@@ -263,10 +285,88 @@ mod tests {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();
-        let (row, _) = build_shadow_row(&input, &body, &config);
+        let (row, _) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
 
         assert!(!row.feature_json.contains("sess-abc"));
         let parsed: serde_json::Value = serde_json::from_str(&row.feature_json).unwrap();
         assert!(parsed.get("original_model").is_some());
+    }
+
+    #[test]
+    fn feature_json_contains_no_raw_prompt() {
+        let canary = "CANARY_PROMPT_SECRET_4A_do_not_persist";
+        let input = short_input("claude-sonnet-4-20250514", "provider-a");
+        let body = json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": canary}]
+        });
+        let config = AutotierRoutingConfigDto::default();
+        let (row, _) = build_shadow_row(&input, &body, &config, &TEST_SECRET);
+
+        assert!(
+            !row.feature_json.contains(canary),
+            "feature_json must not contain raw prompt"
+        );
+    }
+
+    #[test]
+    fn shadow_config_for_observe_fails_open_on_error() {
+        let mut shadow = AutotierRoutingConfigDto::default();
+        shadow.mode = "shadow".to_string();
+        assert!(shadow_config_for_observe::<&str>(Ok(shadow.clone())).is_some());
+
+        shadow.mode = "off".to_string();
+        assert!(shadow_config_for_observe::<&str>(Ok(shadow)).is_none());
+
+        let failed: Result<AutotierRoutingConfigDto, &str> = Err("db locked");
+        assert!(shadow_config_for_observe(failed).is_none());
+    }
+
+    #[test]
+    fn cost_assumptions_record_cache_write_ttl_from_body() {
+        let input = short_input("claude-sonnet-4-20250514", "provider-a");
+        let config = AutotierRoutingConfigDto::default();
+
+        let (unknown, _) = build_shadow_row(
+            &input,
+            &short_body("claude-sonnet-4-20250514"),
+            &config,
+            &TEST_SECRET,
+        );
+        let unknown_doc: serde_json::Value =
+            serde_json::from_str(&unknown.cost_assumptions_json).unwrap();
+        assert_eq!(unknown_doc["cache_write_ttl"], "unknown");
+        assert_eq!(
+            unknown_doc["capability_table_version"],
+            crate::autotier::CAPABILITY_TABLE_VERSION
+        );
+        assert_eq!(
+            unknown_doc["cost_model_version"],
+            crate::autotier::COST_MODEL_VERSION
+        );
+        assert_eq!(
+            unknown_doc["cache_stats_version"],
+            crate::autotier::CACHE_STATS_VERSION
+        );
+
+        let body_5m = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let (row_5m, _) = build_shadow_row(&input, &body_5m, &config, &TEST_SECRET);
+        let doc_5m: serde_json::Value =
+            serde_json::from_str(&row_5m.cost_assumptions_json).unwrap();
+        assert_eq!(doc_5m["cache_write_ttl"], "5m");
+
+        let body_1h = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let (row_1h, _) = build_shadow_row(&input, &body_1h, &config, &TEST_SECRET);
+        let doc_1h: serde_json::Value =
+            serde_json::from_str(&row_1h.cost_assumptions_json).unwrap();
+        assert_eq!(doc_1h["cache_write_ttl"], "1h");
     }
 }

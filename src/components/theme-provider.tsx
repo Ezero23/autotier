@@ -27,7 +27,7 @@ const ThemeProviderContext = createContext<ThemeContextValue | undefined>(
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "cc-switch-theme",
+  storageKey = "autotier-theme",
 }: ThemeProviderProps) {
   const getInitialTheme = () => {
     if (typeof window === "undefined") {
@@ -37,6 +37,14 @@ export function ThemeProvider({
     const stored = window.localStorage.getItem(storageKey) as Theme | null;
     if (stored === "light" || stored === "dark" || stored === "system") {
       return stored;
+    }
+
+    const legacy = window.localStorage.getItem(
+      "cc-switch-theme",
+    ) as Theme | null;
+    if (legacy === "light" || legacy === "dark" || legacy === "system") {
+      window.localStorage.setItem(storageKey, legacy);
+      return legacy;
     }
 
     return defaultTheme;

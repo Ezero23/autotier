@@ -46,7 +46,10 @@ pub use codex_config::{
 };
 pub use commands::open_provider_terminal;
 pub use commands::*;
-pub use config::{get_claude_mcp_path, get_claude_settings_path, read_json_file};
+pub use config::{
+    get_app_config_dir, get_app_config_path as app_config_file_path, get_app_database_path,
+    get_claude_mcp_path, get_claude_settings_path, read_json_file,
+};
 pub use database::{AutotierDecisionRow, AutotierRoutingConfigDto, Database, Profile};
 pub use deeplink::{import_provider_from_deeplink, parse_deeplink_url, DeepLinkImportRequest};
 pub use error::AppError;
@@ -521,7 +524,7 @@ pub fn run() {
 
             // 初始化数据库
             let app_config_dir = crate::config::get_app_config_dir();
-            let db_path = app_config_dir.join("cc-switch.db");
+        let db_path = crate::config::get_app_database_path();
             let json_path = app_config_dir.join("config.json");
 
             // 检查是否需要从 config.json 迁移到 SQLite
@@ -1699,6 +1702,24 @@ pub fn run() {
             commands::delete_daily_memory_file,
             commands::search_daily_memory_files,
             commands::open_workspace_directory,
+            // AutoTier v0.1: Off/Shadow + Slot/Retention only (no Live commands)
+            commands::autotier_get_routing_config,
+            commands::autotier_save_routing_config,
+            commands::autotier_list_provider_slots,
+            commands::autotier_upsert_provider_slot,
+            commands::autotier_delete_provider_slot,
+            commands::autotier_required_slots_status,
+            commands::autotier_clear_decisions,
+            commands::autotier_prune_decisions,
+            commands::autotier_query_decisions,
+            commands::autotier_get_decision_detail,
+            commands::autotier_upsert_decision_label,
+            commands::autotier_get_decision_label,
+            commands::autotier_export_decisions,
+            commands::autotier_replay_export,
+            commands::autotier_evaluate_export,
+            commands::autotier_detect_legacy_data,
+            commands::autotier_import_legacy_data,
             // lightweight mode (for testing or low-resource environments)
             commands::enter_lightweight_mode,
             commands::exit_lightweight_mode,
