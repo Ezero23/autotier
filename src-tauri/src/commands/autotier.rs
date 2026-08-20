@@ -464,7 +464,9 @@ fn resolve_save_mode(
 
 fn normalized_advisory_candidate(raw: Option<&str>) -> Option<String> {
     let value = raw?.trim().to_ascii_lowercase();
-    ADVISORY_CANDIDATES.contains(&value.as_str()).then_some(value)
+    ADVISORY_CANDIDATES
+        .contains(&value.as_str())
+        .then_some(value)
 }
 
 fn validate_advisory_candidate(raw: Option<&str>) -> Result<Option<String>, AppError> {
