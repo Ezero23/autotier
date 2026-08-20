@@ -96,7 +96,7 @@ async function bootstrap() {
       ReactDOM.createRoot(document.getElementById("root")!).render(
         <React.StrictMode>
           <FrontendErrorBoundary>
-            <ThemeProvider defaultTheme="system" storageKey="cc-switch-theme">
+            <ThemeProvider defaultTheme="system" storageKey="autotier-theme">
               <DatabaseUpgrade payload={initError} />
               <Toaster />
             </ThemeProvider>
