@@ -268,6 +268,27 @@ async fn wait_for_completed(db: &Database, expected: usize, timeout: Duration) {
     }
 }
 
+async fn wait_for_usage_linked(db: &Database, expected: usize, timeout: Duration) {
+    let start = Instant::now();
+    loop {
+        let rows = list_recent_decisions(db);
+        let n = rows
+            .iter()
+            .filter(|r| r.usage_request_id.is_some() && r.is_complete)
+            .count();
+        if n >= expected {
+            return;
+        }
+        if start.elapsed() > timeout {
+            panic!(
+                "等待 usage 关联超时: 期望 linked {expected}, 实际 {n}, 行数 {}",
+                rows.len()
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 fn set_autotier_mode(db: &Database, mode: &str) {
     db.autotier_set_config(&AutotierRoutingConfigDto {
         mode: mode.into(),
@@ -286,10 +307,20 @@ fn assert_shadow_unmutated(row: &AutotierDecisionRow) {
     assert!(!row.autotier_mutated_request);
     assert_eq!(row.actual_outbound_model, row.baseline_outbound_model);
     assert_eq!(row.actual_outbound_provider, row.baseline_outbound_provider);
-    assert!(
-        !row.is_complete,
-        "Phase 4C 不附着 Usage，is_complete 仍为 false"
-    );
+    if row.candidate_model.is_some() {
+        assert_ne!(
+            row.actual_outbound_model, row.candidate_model,
+            "Candidate 不得进入 Actual"
+        );
+    }
+}
+
+fn assert_usage_linked(row: &AutotierDecisionRow, message_id: &str) {
+    assert_eq!(row.upstream_message_id.as_deref(), Some(message_id));
+    let expected = format!("session:{message_id}");
+    assert_eq!(row.usage_request_id.as_deref(), Some(expected.as_str()));
+    assert!(row.is_complete, "有 Usage 时应 is_complete");
+    assert!(row.actual_input_tokens.unwrap_or(0) > 0);
 }
 
 async fn post_messages(port: u16, body: &Value) -> reqwest::Response {
@@ -336,12 +367,14 @@ async fn shadow_non_streaming_preserves_model_and_provider() {
     let body: Value = resp.json().await.expect("parse response");
     assert_eq!(body["model"], MODEL);
     assert_eq!(mock.request_count(), 1, "Shadow 不得增加网络调用");
+    let message_id = body["id"].as_str().expect("message id").to_string();
 
-    wait_for_completed(&db, 1, Duration::from_secs(3)).await;
+    wait_for_usage_linked(&db, 1, Duration::from_secs(3)).await;
     let decisions = list_recent_decisions(&db);
     assert_eq!(decisions.len(), 1);
     let row = &decisions[0];
     assert_shadow_unmutated(row);
+    assert_usage_linked(row, &message_id);
     assert_eq!(row.client_requested_model, MODEL);
     assert_eq!(row.baseline_outbound_model.as_deref(), Some(MODEL));
     assert_eq!(row.actual_outbound_model.as_deref(), Some(MODEL));
@@ -393,12 +426,23 @@ async fn shadow_streaming_preserves_model_and_provider() {
     assert!(events.contains(&"message_start"));
     assert!(events.contains(&"message_stop"));
     assert_eq!(mock.request_count(), 1, "Shadow 不得增加网络调用");
+    let message_id = text
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("data: ").and_then(|data| {
+                serde_json::from_str::<Value>(data)
+                    .ok()
+                    .and_then(|v| v.pointer("/message/id")?.as_str().map(str::to_string))
+            })
+        })
+        .expect("sse message id");
 
-    wait_for_completed(&db, 1, Duration::from_secs(3)).await;
+    wait_for_usage_linked(&db, 1, Duration::from_secs(3)).await;
     let decisions = list_recent_decisions(&db);
     assert_eq!(decisions.len(), 1);
     let row = &decisions[0];
     assert_shadow_unmutated(row);
+    assert_usage_linked(row, &message_id);
     assert_eq!(row.client_requested_model, MODEL);
     assert_eq!(row.actual_outbound_model.as_deref(), Some(MODEL));
     assert_eq!(
@@ -451,10 +495,12 @@ async fn shadow_tool_use_preserves_model_and_provider() {
         mock.requests.lock().unwrap()[0].get("tools").is_some(),
         "上游应收到 tools 字段"
     );
+    let message_id = json_body["id"].as_str().expect("message id").to_string();
 
-    wait_for_completed(&db, 1, Duration::from_secs(3)).await;
+    wait_for_usage_linked(&db, 1, Duration::from_secs(3)).await;
     let row = &list_recent_decisions(&db)[0];
     assert_shadow_unmutated(row);
+    assert_usage_linked(row, &message_id);
     assert_eq!(row.actual_outbound_model.as_deref(), Some(MODEL));
     assert_eq!(row.actual_outbound_provider.as_deref(), Some("p-tools"));
     assert_eq!(row.initial_selected_provider.as_deref(), Some("p-tools"));
@@ -496,6 +542,9 @@ async fn shadow_upstream_500_writes_error_finalize() {
     assert_eq!(row.outcome.as_deref(), Some("error"));
     assert_eq!(row.error_code.as_deref(), Some("upstream_500"));
     assert_eq!(row.fallback_count, 0);
+    assert!(!row.is_complete, "无 Message ID 的 500 保持合法无 Usage");
+    assert!(row.usage_request_id.is_none());
+    assert!(row.upstream_message_id.is_none());
 
     state.proxy_service.stop().await.expect("stop proxy");
 }
@@ -540,6 +589,8 @@ async fn shadow_failover_distinguishes_initial_and_actual_provider() {
 
     let resp = post_messages(port, &request_body(MODEL, false)).await;
     assert_eq!(resp.status(), 200, "failover 后客户端应拿到 200");
+    let json_e: Value = resp.json().await.expect("parse failover body");
+    let message_id = json_e["id"].as_str().expect("message id").to_string();
     assert_eq!(bad_mock.request_count(), 1, "pfail 应被尝试 1 次");
     assert_eq!(
         backup_mock.request_count(),
@@ -547,9 +598,10 @@ async fn shadow_failover_distinguishes_initial_and_actual_provider() {
         "pbackup 应接到 failover 后的请求；Shadow 不得再增加调用"
     );
 
-    wait_for_completed(&db, 1, Duration::from_secs(3)).await;
+    wait_for_usage_linked(&db, 1, Duration::from_secs(3)).await;
     let row = &list_recent_decisions(&db)[0];
     assert_shadow_unmutated(row);
+    assert_usage_linked(row, &message_id);
     assert_eq!(
         row.initial_selected_provider.as_deref(),
         Some("pfail"),
@@ -635,6 +687,53 @@ async fn shadow_db_failure_does_not_block_request() {
     assert_eq!(resp.status(), 200, "DB 失败不应阻塞请求");
     let body: Value = resp.json().await.expect("parse response");
     assert_eq!(body["model"], MODEL);
+
+    state.proxy_service.stop().await.expect("stop proxy");
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn eligible_usage_link_rate_is_at_least_99_percent() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+
+    let state = create_test_state().expect("create test state");
+    let db = state.db.clone();
+    set_autotier_mode(&db, "shadow");
+
+    let (upstream_port, _mock) = start_mock_upstream("link", false).await;
+    let provider = make_claude_provider("p-link", "Mock Link", upstream_port);
+    db.save_provider("claude", &provider)
+        .expect("save provider");
+    db.set_current_provider("claude", "p-link")
+        .expect("set current provider");
+
+    let info = state.proxy_service.start().await.expect("start proxy");
+    let port = info.port;
+
+    const N: usize = 20;
+    for i in 0..N {
+        let resp = post_messages(port, &request_body(MODEL, false)).await;
+        assert_eq!(resp.status(), 200, "request {i}");
+        let _ = resp.bytes().await;
+    }
+
+    wait_for_usage_linked(&db, N, Duration::from_secs(5)).await;
+    let rows = list_recent_decisions(&db);
+    let eligible = rows
+        .iter()
+        .filter(|r| r.outcome.as_deref() == Some("success"))
+        .count();
+    let linked = rows
+        .iter()
+        .filter(|r| r.usage_request_id.is_some() && r.is_complete)
+        .count();
+    let rate = linked as f64 / eligible as f64;
+    assert_eq!(eligible, N);
+    assert!(
+        rate >= 0.99,
+        "Eligible Usage Link Rate {rate:.4} < 0.99 (linked={linked} eligible={eligible})"
+    );
 
     state.proxy_service.stop().await.expect("stop proxy");
 }

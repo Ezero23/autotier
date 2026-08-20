@@ -21,6 +21,7 @@
 // pub use 重导出为后续 Phase 准备，当前模块私有故显式允许 unused。
 #![allow(dead_code, unused_imports)]
 
+mod cost;
 mod decision;
 mod extractor;
 mod features;
@@ -31,12 +32,15 @@ pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
     CLASSIFIER_VERSION, POLICY_VERSION,
 };
+pub use cost::{
+    CACHE_STATS_VERSION, CAPABILITY_TABLE_VERSION, COST_MODEL_VERSION,
+};
 pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
 pub use observer::{build_shadow_row, is_shadow_enabled, shadow_config_for_observe, ShadowInput};
 pub use writer::{
-    enqueue_create, enqueue_finalize, hash_session_id, load_or_create_session_secret, writer_for,
-    DecisionEvent, DecisionWriter, FinalizeEvent,
+    enqueue_create, enqueue_finalize, enqueue_usage_finalize, hash_session_id,
+    load_or_create_session_secret, writer_for, DecisionEvent, DecisionWriter, FinalizeEvent,
 };
 
 use crate::app_config::AppType;
