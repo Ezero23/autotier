@@ -23,9 +23,9 @@ last upstream sync = v3.20.0 (0b5da510, 2026-08-19)
 
 ## 当前状态
 
-**Phase 0 Closure（收口）** — 文档见 `docs/autotier/`。尚未包含 AutoTier 业务实现。
+**AutoTier v0.1.0（Shadow 观测）** — Phase 5–10 已合入 `main`。
 
-v0.1 只做 Shadow 观测：生成可解释的候选路由决策与成本区间。阻断级不变量（AMEND-001 第 2 节）:
+v0.1 只做 Shadow 观测：生成可解释的候选路由决策与成本区间，**不修改任何真实出站模型或 Provider**。阻断级不变量（AMEND-001 第 2 节）:
 
 ```text
 autotier_mutated_request == false
@@ -33,7 +33,22 @@ actual_outbound_model    == baseline_outbound_model
 actual_outbound_provider == baseline_outbound_provider
 ```
 
-（不假设 actual == client_requested：基座自身的 ModelMapping / Failover / 协议转换本来就可能改变出站值。)
+### v0.1 能力一览
+
+| 区域 | 内容 |
+|---|---|
+| 路由模式 | Off / Shadow（默认 Shadow 只观测） |
+| Provider Slots | 四语义槽位配置 + Shadow 说明 |
+| 决策观测 | 列表 / 详情 / 标注 / 分页 / 筛选 |
+| 数据工具 | 隐私安全导出、Replay、Holdout Eval |
+| 数据目录 | 默认 `~/.autotier`；legacy `~/.cc-switch` 只读回退 + 一键导入 |
+| 产品身份 | `AutoTier` / `com.ezero.autotier` / `autotier-theme` |
+
+### 发版与验收
+
+- Release Notes：`docs/release-notes/v0.1.0-zh.md` / `v0.1.0-en.md`
+- 全新安装 E2E 清单：`docs/autotier/v0.1-e2e-checklist.md`
+- v0.2+（未实现）：Policy Hint、Live Canary
 
 ## 文档
 
@@ -44,6 +59,8 @@ actual_outbound_provider == baseline_outbound_provider
 | [`docs/autotier/base-selection.md`](./docs/autotier/base-selection.md) | 两个候选基座的七维度对比与选型结论 |
 | [`docs/autotier/path-map.md`](./docs/autotier/path-map.md) | 基座请求链路图：Handler → Forwarder → Usage Finalize，含 Shadow 插入点 |
 | [`docs/autotier/baseline-verification.md`](./docs/autotier/baseline-verification.md) | 构建 / Lint / 测试 / 冒烟实测结果与 Off 模式 Parity 验证方法 |
+| [`docs/autotier/v0.1-e2e-checklist.md`](./docs/autotier/v0.1-e2e-checklist.md) | v0.1 全新安装 14 步 E2E 验收清单 |
+| [`docs/release-notes/v0.1.0-zh.md`](./docs/release-notes/v0.1.0-zh.md) | v0.1.0 发行说明 |
 
 ## 开发纪律（摘自 PRD 与 AMEND-001)
 
