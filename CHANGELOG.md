@@ -1,9 +1,33 @@
 # Changelog
 
-All notable changes to CC Switch will be documented in this file.
+All notable changes to AutoTier (and its CC Switch upstream base) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2026-08-20
+
+First AutoTier release: **Shadow-only** routing observatory on the CC Switch proxy base.
+
+### Added
+
+- **Shadow routing**: Off/Shadow modes; decision writer with HMAC session hash; observer integration in Claude handler
+- **Provider slots**: Four semantic slots with CRUD and routing config UI
+- **Decision backend & UI**: Query, detail, labels, pagination, filters; four locales
+- **Usage finalize by decision_id**: Links upstream message id, usage request id, and cost projection
+- **Export / Replay / Eval**: Privacy-safe JSONL export, replay engine, session holdout metrics
+- **Product identity**: `AutoTier`, `com.ezero.autotier`, npm package `autotier`, updater `dl.autotier.io`
+- **Data directory**: Default `~/.autotier/autotier.db`; legacy `~/.cc-switch` read fallback; copy-only import command
+- **Theme migration**: `autotier-theme` localStorage key with fallback from `cc-switch-theme`
+
+### Verified
+
+- Frontend: typecheck, Prettier, 1017 unit tests, renderer build
+- Backend: fmt, clippy, full `cargo test` including `autotier_shadow`, `autotier_parity`, `proxy_smoke`
+
+See [v0.1.0 release notes](docs/release-notes/v0.1.0-en.md) and [E2E checklist](docs/autotier/v0.1-e2e-checklist.md).
+
+---
 
 ## [3.20.0] - 2026-08-18
 
