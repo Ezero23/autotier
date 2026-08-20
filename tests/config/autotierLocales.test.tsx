@@ -239,6 +239,7 @@ describe("AutotierRoutingSettingsPanel", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText(/Shadow decisions/i)).toBeInTheDocument();
+    expect(screen.getByTestId("autotier-data-tools")).toBeInTheDocument();
     const row = await screen.findByRole("row", { name: /claude/i });
     await user.click(row);
     expect(
