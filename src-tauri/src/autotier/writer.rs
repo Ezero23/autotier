@@ -191,8 +191,10 @@ impl DecisionWriter {
     }
 }
 
-fn writer_slot() -> &'static Mutex<Option<(Weak<Database>, DecisionWriter)>> {
-    static SLOT: OnceLock<Mutex<Option<(Weak<Database>, DecisionWriter)>>> = OnceLock::new();
+type WriterSlot = Mutex<Option<(Weak<Database>, DecisionWriter)>>;
+
+fn writer_slot() -> &'static WriterSlot {
+    static SLOT: OnceLock<WriterSlot> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
