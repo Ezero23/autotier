@@ -426,4 +426,42 @@ export const handlers = [
   http.post(`${TAURI_ENDPOINT}/autotier_delete_provider_slot`, () =>
     success(1),
   ),
+  http.post(`${TAURI_ENDPOINT}/autotier_get_routing_config`, () =>
+    success({
+      mode: "shadow",
+      retention_days: 30,
+      raw_prompt_opt_in: false,
+      classifier_version: "rules-v0.2",
+      feature_version: "claude-extractor-v0.2",
+      policy_version: "shadow-policy-v0.2",
+      capability_table_version: "capability-table-v0.1",
+      cost_model_version: "cost-model-v0.1",
+      cache_stats_version: "cache-stats-v0.1",
+      updated_at: 1,
+      degraded_from: null,
+    }),
+  ),
+  http.post(
+    `${TAURI_ENDPOINT}/autotier_save_routing_config`,
+    async ({ request }) => {
+      const { input } = await withJson<{
+        input?: { mode?: string; retention_days?: number };
+      }>(request);
+      return success({
+        mode: "shadow",
+        retention_days: input?.retention_days ?? 30,
+        raw_prompt_opt_in: false,
+        classifier_version: "rules-v0.2",
+        feature_version: "claude-extractor-v0.2",
+        policy_version: "shadow-policy-v0.2",
+        capability_table_version: "capability-table-v0.1",
+        cost_model_version: "cost-model-v0.1",
+        cache_stats_version: "cache-stats-v0.1",
+        updated_at: Date.now(),
+        degraded_from: input?.mode?.startsWith("forced_") ? input.mode : null,
+      });
+    },
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_clear_decisions`, () => success(null)),
+  http.post(`${TAURI_ENDPOINT}/autotier_prune_decisions`, () => success(0)),
 ];

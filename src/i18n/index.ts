@@ -5,6 +5,7 @@ import en from "./locales/en.json";
 import ja from "./locales/ja.json";
 import zh from "./locales/zh.json";
 import zhTW from "./locales/zh-TW.json";
+import { autotierTranslations } from "./autotier/translations";
 
 type Language = "zh" | "zh-TW" | "en" | "ja";
 
@@ -63,16 +64,16 @@ const getInitialLanguage = (): Language => {
 
 const resources = {
   en: {
-    translation: en,
+    translation: { ...en, autotier: autotierTranslations.en },
   },
   ja: {
-    translation: ja,
+    translation: { ...ja, autotier: autotierTranslations.ja },
   },
   zh: {
-    translation: zh,
+    translation: { ...zh, autotier: autotierTranslations.zh },
   },
   "zh-TW": {
-    translation: zhTW,
+    translation: { ...zhTW, autotier: autotierTranslations["zh-TW"] },
   },
 };
 
