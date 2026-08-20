@@ -886,6 +886,18 @@ impl Database {
 // ---------------------------------------------------------------------------
 // 测试辅助：在内存数据库上运行 DAO 测试
 // ---------------------------------------------------------------------------
+// Phase 7A decision list/detail queries
+// ---------------------------------------------------------------------------
+
+#[path = "autotier_decisions_query.rs"]
+mod autotier_decisions_query;
+pub use autotier_decisions_query::{
+    AutotierDecisionDetail, AutotierDecisionListPage, AutotierDecisionQueryFilter,
+};
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

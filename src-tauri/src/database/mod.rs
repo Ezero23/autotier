@@ -41,7 +41,9 @@ pub(crate) use dao::proxy::{
     PRICING_SOURCE_RESPONSE,
 };
 pub use dao::autotier::{
-    AutotierDecisionRow, AutotierProviderSlotDto, AutotierRoutingConfigDto, FinalizeDecisionParams,
+    AutotierDecisionDetail, AutotierDecisionLabelDto, AutotierDecisionListPage,
+    AutotierDecisionQueryFilter, AutotierDecisionRow, AutotierProviderSlotDto,
+    AutotierRoutingConfigDto, FinalizeDecisionParams,
 };
 pub use dao::FailoverQueueItem;
 pub use dao::Profile;
