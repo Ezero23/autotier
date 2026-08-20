@@ -24,6 +24,8 @@
 mod cost;
 mod decision;
 pub mod export;
+pub mod replay;
+pub mod eval;
 mod extractor;
 mod features;
 mod observer;
