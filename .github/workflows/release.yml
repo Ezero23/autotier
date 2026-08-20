@@ -123,15 +123,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare Tauri signing key
+        id: tauri_signing
         shell: bash
         run: |
-          # 调试：检查 Secret 是否存在
           if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "❌ TAURI_SIGNING_PRIVATE_KEY Secret 为空或不存在" >&2
-            echo "请检查 GitHub 仓库 Settings > Secrets and variables > Actions" >&2
-            exit 1
+            echo "⚠️ TAURI_SIGNING_PRIVATE_KEY not set — building unsigned (no updater .sig artifacts)"
+            echo "signing_enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          
+          echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
+
           RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
           # 目标：提供正确的私钥“文件路径”给 Tauri CLI，避免内容解码歧义
           KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
@@ -178,11 +179,29 @@ jobs:
           fi
           echo "✅ Tauri signing key prepared"
 
+      - name: Disable updater artifacts for unsigned builds
+        if: steps.tauri_signing.outputs.signing_enabled != 'true'
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'src-tauri/tauri.conf.json';
+          const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+          j.bundle.createUpdaterArtifacts = false;
+          fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+          console.log('createUpdaterArtifacts=false for unsigned CI build');
+          NODE
+
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then
+            echo "⚠️ APPLE_CERTIFICATE not set — skipping Apple cert import"
+            exit 0
+          fi
+
           # Decode .p12 certificate from base64
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           printf '%s' "${{ secrets.APPLE_CERTIFICATE }}" | (base64 --decode 2>/dev/null || base64 -D) > "$CERT_PATH"
@@ -269,12 +288,13 @@ jobs:
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          SIGNING_ENABLED: ${{ steps.tauri_signing.outputs.signing_enabled }}
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          VERSION="${GITHUB_REF_NAME}"
 
-          # Locate bundle artifacts
           TAR_GZ=""; APP_PATH=""
           for path in \
             "src-tauri/target/universal-apple-darwin/release/bundle/macos" \
@@ -287,62 +307,58 @@ jobs:
             fi
           done
 
-          if [ -z "$TAR_GZ" ]; then
-            echo "❌ No macOS .tar.gz updater artifact found" >&2
-            exit 1
-          fi
           if [ -z "$APP_PATH" ]; then
             echo "❌ No .app found" >&2
             exit 1
           fi
 
-          # Staple notarization ticket to .app (Tauri already notarized it)
-          xcrun stapler staple "$APP_PATH"
-          echo "✅ .app stapled"
+          if [ "$SIGNING_ENABLED" = "true" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            xcrun stapler staple "$APP_PATH" || echo "⚠️ stapler skipped/failed"
+          else
+            echo "⚠️ Unsigned macOS build — skipping stapler"
+          fi
 
-          # 1) Collect .tar.gz (updater artifact)
-          NEW_TAR_GZ="AutoTier-${VERSION}-macOS.tar.gz"
-          cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
-          [ -f "$TAR_GZ.sig" ] && cp "$TAR_GZ.sig" "release-assets/$NEW_TAR_GZ.sig" || echo ".sig for macOS not found yet"
-          echo "macOS updater artifact copied: $NEW_TAR_GZ"
+          if [ -n "$TAR_GZ" ]; then
+            NEW_TAR_GZ="AutoTier-${VERSION}-macOS.tar.gz"
+            cp "$TAR_GZ" "release-assets/$NEW_TAR_GZ"
+            [ -f "$TAR_GZ.sig" ] && cp "$TAR_GZ.sig" "release-assets/$NEW_TAR_GZ.sig" || true
+          elif [ "$SIGNING_ENABLED" = "true" ]; then
+            echo "❌ No macOS .tar.gz updater artifact found" >&2
+            exit 1
+          fi
 
-          # 2) Collect .app as zip
           NEW_ZIP="AutoTier-${VERSION}-macOS.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
           echo "macOS zip ready: $NEW_ZIP"
 
-          # 3) Create styled DMG with create-dmg (Tauri's built-in DMG styling doesn't work on CI)
-          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            echo "❌ APPLE_SIGNING_IDENTITY is missing before DMG creation" >&2
-            exit 1
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
+            NEW_DMG="AutoTier-${VERSION}-macOS.dmg"
+            DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
+            rm -rf "$DMG_STAGE_DIR"
+            mkdir -p "$DMG_STAGE_DIR"
+            ditto "$APP_PATH" "$DMG_STAGE_DIR/AutoTier.app"
+            create-dmg \
+              --volname "AutoTier" \
+              --background "src-tauri/icons/dmg-background.png" \
+              --window-size 660 400 \
+              --window-pos 200 120 \
+              --icon-size 80 \
+              --icon "AutoTier.app" 180 220 \
+              --hide-extension "AutoTier.app" \
+              --app-drop-link 480 220 \
+              --codesign "$APPLE_SIGNING_IDENTITY" \
+              --no-internet-enable \
+              "release-assets/$NEW_DMG" \
+              "$DMG_STAGE_DIR"
+            rm -rf "$DMG_STAGE_DIR"
+            echo "✅ Styled DMG created: $NEW_DMG"
+          else
+            echo "⚠️ Skipping DMG — no Apple signing identity"
           fi
 
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
-          NEW_DMG="AutoTier-${VERSION}-macOS.dmg"
-          DMG_STAGE_DIR="$RUNNER_TEMP/dmg-stage"
-          rm -rf "$DMG_STAGE_DIR"
-          mkdir -p "$DMG_STAGE_DIR"
-          ditto "$APP_PATH" "$DMG_STAGE_DIR/AutoTier.app"
-
-          create-dmg \
-            --volname "AutoTier" \
-            --background "src-tauri/icons/dmg-background.png" \
-            --window-size 660 400 \
-            --window-pos 200 120 \
-            --icon-size 80 \
-            --icon "AutoTier.app" 180 220 \
-            --hide-extension "AutoTier.app" \
-            --app-drop-link 480 220 \
-            --codesign "$APPLE_SIGNING_IDENTITY" \
-            --no-internet-enable \
-            "release-assets/$NEW_DMG" \
-            "$DMG_STAGE_DIR"
-
-          rm -rf "$DMG_STAGE_DIR"
-          echo "✅ Styled DMG created: $NEW_DMG"
-
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         timeout-minutes: 30
         env:
@@ -384,7 +400,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -601,26 +617,31 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: AutoTier ${{ github.ref_name }}
-          prerelease: true
+          prerelease: false
           body: |
             ## AutoTier ${{ github.ref_name }}
 
-            🌐 **Only Official Website / 唯一官方网站 / 唯一の公式サイト**: [autotier.io](https://autotier.io)
+            Local-first **Shadow routing observatory** — observe candidate decisions without changing outbound model or provider.
 
-            Claude Code 供应商切换工具
+            📖 Release notes: [English](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/v0.1.0-en.md) · [中文](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/v0.1.0-zh.md)
 
-            ### 下载
+            ### Downloads
 
-            - **macOS**: `AutoTier-${{ github.ref_name }}-macOS.dmg`（推荐）或 `AutoTier-${{ github.ref_name }}-macOS.zip`（解压即用）
-            - **Windows (x86_64)**: `AutoTier-${{ github.ref_name }}-Windows.msi`（安装版）或 `AutoTier-${{ github.ref_name }}-Windows-Portable.zip`（绿色版）
-            - **Windows (ARM64)**: `AutoTier-${{ github.ref_name }}-Windows-arm64.msi`（安装版）或 `AutoTier-${{ github.ref_name }}-Windows-arm64-Portable.zip`（绿色版）
-            - **Linux (x86_64)**: `AutoTier-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
+            - **macOS**: `AutoTier-${{ github.ref_name }}-macOS.dmg` (recommended) or `.zip`
+            - **Windows (x64)**: `AutoTier-${{ github.ref_name }}-Windows.msi` or `-Portable.zip`
+            - **Windows (ARM64)**: `AutoTier-${{ github.ref_name }}-Windows-arm64.msi` or `-Portable.zip`
+            - **Linux (x64)**: `AutoTier-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
             - **Linux (ARM64)**: `AutoTier-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 
-            > `.tar.gz` 为 Tauri updater 自动更新专用，无需手动下载。
+            > Unsigned builds omit `.sig` updater artifacts until `TAURI_SIGNING_PRIVATE_KEY` is configured in repo secrets.
 
-            ---
-            macOS 版本已通过 Apple 代码签名和公证，可直接安装使用。
+            ### Shadow invariants (v0.1)
+
+            ```
+            autotier_mutated_request == false
+            actual_outbound_model    == baseline_outbound_model
+            actual_outbound_provider == baseline_outbound_provider
+            ```
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

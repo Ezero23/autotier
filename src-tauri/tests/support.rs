@@ -75,6 +75,7 @@ pub fn reset_test_fs() {
     ] {
         let path = home.join(sub);
         if path.exists() {
+            force_writable_tree(&path);
             if let Err(err) = std::fs::remove_dir_all(&path) {
                 eprintln!("failed to clean {}: {}", path.display(), err);
             }
@@ -82,11 +83,34 @@ pub fn reset_test_fs() {
     }
     let claude_json = home.join(".claude.json");
     if claude_json.exists() {
+        force_writable_tree(&claude_json);
         let _ = std::fs::remove_file(&claude_json);
     }
 
     // 重置内存中的设置缓存，确保测试环境不受上一次调用影响
     let _ = update_settings(AppSettings::default());
+}
+
+/// Best-effort chmod so readonly artifacts (e.g. shadow_db_failure) do not block cleanup.
+fn force_writable_tree(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = (|| -> Result<(), std::io::Error> {
+            if path.is_dir() {
+                for entry in std::fs::read_dir(path)? {
+                    force_writable_tree(&entry?.path());
+                }
+            }
+            let mut perms = std::fs::metadata(path)?.permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(path, perms)
+        })();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 
 #[allow(dead_code)]
