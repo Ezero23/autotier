@@ -157,7 +157,7 @@ pub(crate) fn replace_pi_provider(
     })?;
     if current != expected {
         return Err(AppError::Conflict(format!(
-            "Pi provider '{provider_key}' changed outside CC Switch"
+            "Pi provider '{provider_key}' changed outside AutoTier"
         )));
     }
     if current == replacement {
@@ -211,7 +211,7 @@ fn remove_pi_provider_inner(
     };
     if expected.is_some_and(|expected| current != *expected) {
         return Err(AppError::Conflict(format!(
-            "Pi provider '{provider_key}' changed outside CC Switch"
+            "Pi provider '{provider_key}' changed outside AutoTier"
         )));
     }
     providers.remove(provider_key);
@@ -417,7 +417,7 @@ fn ensure_models_revision(path: &Path, expected_revision: &str) -> Result<(), Ap
         Ok(())
     } else {
         Err(AppError::Conflict(format!(
-            "Pi models.json changed outside CC Switch: {}",
+            "Pi models.json changed outside AutoTier: {}",
             path.display()
         )))
     }

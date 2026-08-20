@@ -9,9 +9,14 @@ use crate::autotier::{
     CACHE_STATS_VERSION, CAPABILITY_TABLE_VERSION, CLASSIFIER_VERSION, COST_MODEL_VERSION,
     FEATURE_VERSION, POLICY_VERSION,
 };
-use crate::database::{lock_conn, AutotierProviderSlotDto, AutotierRoutingConfigDto, Database};
+use crate::database::{
+    lock_conn, AutotierProviderModelPricingDto, AutotierProviderSlotDto, AutotierRoutingConfigDto,
+    Database, UpsertAutotierProviderModelPricingInput,
+};
 use crate::error::AppError;
 use crate::store::AppState;
+use rust_decimal::Decimal;
+use std::str::FromStr;
 
 /// v0.1 允许的 retention_days。
 pub const RETENTION_DAYS_ALLOWED: &[i32] = &[7, 14, 30, 90];
@@ -106,6 +111,31 @@ pub fn autotier_required_slots_status(
     provider_id: String,
 ) -> Result<RequiredSlotsStatus, String> {
     required_slots_status(&state.db, &provider_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn autotier_list_provider_model_pricing(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<Vec<AutotierProviderModelPricingDto>, String> {
+    list_provider_model_pricing(&state.db, &provider_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn autotier_upsert_provider_model_pricing(
+    state: State<'_, AppState>,
+    input: UpsertAutotierProviderModelPricingInput,
+) -> Result<AutotierProviderModelPricingDto, String> {
+    upsert_provider_model_pricing(&state.db, input).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn autotier_delete_provider_model_pricing(
+    state: State<'_, AppState>,
+    provider_id: String,
+    model_id: String,
+) -> Result<u64, String> {
+    delete_provider_model_pricing(&state.db, &provider_id, &model_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -248,6 +278,94 @@ pub(crate) fn required_slots_status(
         present,
         missing,
     })
+}
+
+pub(crate) fn list_provider_model_pricing(
+    db: &Database,
+    provider_id: &str,
+) -> Result<Vec<AutotierProviderModelPricingDto>, AppError> {
+    let provider_id = normalize_required_text(provider_id, "provider_id")?;
+    db.autotier_list_provider_model_pricing(&provider_id)
+}
+
+pub(crate) fn upsert_provider_model_pricing(
+    db: &Database,
+    input: UpsertAutotierProviderModelPricingInput,
+) -> Result<AutotierProviderModelPricingDto, AppError> {
+    let provider_id = normalize_required_text(&input.provider_id, "provider_id")?;
+    let model_id = normalize_required_text(&input.model_id, "model_id")?;
+    let display_name = {
+        let value = input.display_name.trim();
+        if value.is_empty() {
+            model_id.clone()
+        } else {
+            value.to_string()
+        }
+    };
+    let row = AutotierProviderModelPricingDto {
+        provider_id,
+        model_id,
+        display_name,
+        input_cost_per_million: normalize_non_negative_price(
+            &input.input_cost_per_million,
+            "input_cost_per_million",
+        )?,
+        output_cost_per_million: normalize_non_negative_price(
+            &input.output_cost_per_million,
+            "output_cost_per_million",
+        )?,
+        cache_read_cost_per_million: normalize_non_negative_price(
+            &input.cache_read_cost_per_million,
+            "cache_read_cost_per_million",
+        )?,
+        cache_creation_cost_per_million: normalize_non_negative_price(
+            &input.cache_creation_cost_per_million,
+            "cache_creation_cost_per_million",
+        )?,
+        price_source: input
+            .price_source
+            .as_deref()
+            .map(str::trim)
+            .filter(|source| !source.is_empty())
+            .unwrap_or("manual")
+            .to_string(),
+        observed_at: chrono::Utc::now().timestamp_millis(),
+    };
+    db.autotier_upsert_provider_model_pricing(&row)?;
+    Ok(row)
+}
+
+pub(crate) fn delete_provider_model_pricing(
+    db: &Database,
+    provider_id: &str,
+    model_id: &str,
+) -> Result<u64, AppError> {
+    let provider_id = normalize_required_text(provider_id, "provider_id")?;
+    let model_id = normalize_required_text(model_id, "model_id")?;
+    db.autotier_delete_provider_model_pricing(&provider_id, &model_id)
+}
+
+fn normalize_required_text(value: &str, field: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::InvalidInput(format!("{field} is required")));
+    }
+    if value.len() > 256 {
+        return Err(AppError::InvalidInput(format!("{field} is too long")));
+    }
+    Ok(value.to_string())
+}
+
+fn normalize_non_negative_price(value: &str, field: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    let decimal = Decimal::from_str(value)
+        .map_err(|_| AppError::InvalidInput(format!("{field} must be a non-negative decimal")))?;
+    if decimal.is_sign_negative() {
+        return Err(AppError::InvalidInput(format!(
+            "{field} must be a non-negative decimal"
+        )));
+    }
+    Ok(decimal.normalize().to_string())
 }
 
 pub(crate) fn clear_decisions(db: &Database) -> Result<(), AppError> {
@@ -558,5 +676,55 @@ mod tests {
         assert!(prune_decisions(&db, Some(11)).is_err());
         assert_eq!(prune_decisions(&db, Some(30)).unwrap(), 0);
         clear_decisions(&db).unwrap();
+    }
+
+    #[test]
+    fn provider_pricing_round_trips_and_normalizes_decimal_values() {
+        let db = db();
+        let saved = upsert_provider_model_pricing(
+            &db,
+            UpsertAutotierProviderModelPricingInput {
+                provider_id: " provider-a ".into(),
+                model_id: "shared-model".into(),
+                display_name: "Shared Model".into(),
+                input_cost_per_million: "0.0100".into(),
+                output_cost_per_million: "2".into(),
+                cache_read_cost_per_million: "0".into(),
+                cache_creation_cost_per_million: "0.25".into(),
+                price_source: Some("manual snapshot".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(saved.provider_id, "provider-a");
+        assert_eq!(saved.input_cost_per_million, "0.01");
+        assert!(saved.observed_at > 0);
+
+        let listed = list_provider_model_pricing(&db, "provider-a").unwrap();
+        assert_eq!(listed, vec![saved]);
+        assert_eq!(
+            delete_provider_model_pricing(&db, "provider-a", "shared-model").unwrap(),
+            1
+        );
+        assert!(list_provider_model_pricing(&db, "provider-a")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn provider_pricing_rejects_negative_or_invalid_values() {
+        let db = db();
+        let mut input = UpsertAutotierProviderModelPricingInput {
+            provider_id: "provider-a".into(),
+            model_id: "model".into(),
+            display_name: "".into(),
+            input_cost_per_million: "-0.1".into(),
+            output_cost_per_million: "0".into(),
+            cache_read_cost_per_million: "0".into(),
+            cache_creation_cost_per_million: "0".into(),
+            price_source: None,
+        };
+        assert!(upsert_provider_model_pricing(&db, input.clone()).is_err());
+        input.input_cost_per_million = "not-a-number".into();
+        assert!(upsert_provider_model_pricing(&db, input).is_err());
     }
 }

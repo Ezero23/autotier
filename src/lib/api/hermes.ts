@@ -6,9 +6,9 @@ import type {
 } from "@/types";
 
 /**
- * Hermes Agent configuration API (CC Switch side).
+ * Hermes Agent configuration API (AutoTier side).
  *
- * CC Switch intentionally keeps its Hermes surface minimal — deep configuration
+ * AutoTier intentionally keeps its Hermes surface minimal — deep configuration
  * (model, agent behavior, env vars, skills, cron, logs, analytics) lives in
  * the Hermes Web UI at http://127.0.0.1:9119. CC Switch only reads the `model`
  * section to highlight the active provider and launches the Hermes Web UI for

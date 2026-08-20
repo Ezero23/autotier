@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use cc_switch_lib::{update_settings, AppSettings, AppState, Database, MultiAppConfig};
+use autotier_lib::{update_settings, AppSettings, AppState, Database, MultiAppConfig};
 
 type HomeSlot = Mutex<Option<&'static Path>>;
 

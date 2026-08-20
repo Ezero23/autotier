@@ -1,6 +1,6 @@
 use std::fs;
 
-use cc_switch_lib::{
+use autotier_lib::{
     get_app_config_dir, migrate_skills_to_ssot, AppType, ImportSkillSelection, InstalledSkill,
     SkillApps, SkillService,
 };

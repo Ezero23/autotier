@@ -8,6 +8,7 @@ import {
   ProviderForm,
   type ProviderFormValues,
 } from "@/components/providers/forms/ProviderForm";
+import { AutotierProviderPricingPanel } from "@/components/autotier/AutotierProviderPricingPanel";
 import { AutotierProviderSlotsPanel } from "@/components/autotier/AutotierProviderSlotsPanel";
 import { AuthSettingsPanel } from "@/components/providers/AuthSettingsPanel";
 import {
@@ -303,7 +304,10 @@ export function EditProviderDialog({
         isProxyTakeover={isProxyTakeover}
       />
       {provider.id ? (
-        <AutotierProviderSlotsPanel providerId={provider.id} />
+        <>
+          <AutotierProviderSlotsPanel providerId={provider.id} />
+          <AutotierProviderPricingPanel providerId={provider.id} />
+        </>
       ) : null}
       <AuthSettingsPanel
         target={authSettingsTarget}
