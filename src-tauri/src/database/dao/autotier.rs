@@ -335,9 +335,8 @@ impl Database {
                 if has_usage { 1 } else { 0 },
             ],
         );
-        let affected = result.map_err(|e| {
-            AppError::Database(format!("autotier_finalize_decision failed: {e}"))
-        })?;
+        let affected = result
+            .map_err(|e| AppError::Database(format!("autotier_finalize_decision failed: {e}")))?;
         if affected == 0 {
             return Err(AppError::Database(format!(
                 "autotier_finalize_decision: decision_id '{}' not found",
@@ -527,7 +526,8 @@ impl Database {
         if retention_days <= 0 {
             // 0 天保留 = 不持久化，但已存在的行应全部清除
             let conn = lock_conn!(self.conn);
-            let count = conn.execute("DELETE FROM autotier_routing_decisions", [])
+            let count = conn
+                .execute("DELETE FROM autotier_routing_decisions", [])
                 .map_err(|e| AppError::Database(format!("autotier_prune_decisions failed: {e}")))?;
             return Ok(count as u64);
         }
@@ -557,9 +557,11 @@ impl Database {
     pub fn autotier_count_decisions(&self) -> Result<i64, AppError> {
         let conn = lock_conn!(self.conn);
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM autotier_routing_decisions", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM autotier_routing_decisions",
+                [],
+                |row| row.get(0),
+            )
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(count)
     }
@@ -854,17 +856,16 @@ impl Database {
     }
 
     /// 删除某 Provider 的所有 Slot（Provider 被删除时调用）。
-    pub fn autotier_delete_slots_for_provider(
-        &self,
-        provider_id: &str,
-    ) -> Result<u64, AppError> {
+    pub fn autotier_delete_slots_for_provider(&self, provider_id: &str) -> Result<u64, AppError> {
         let conn = lock_conn!(self.conn);
         let count = conn
             .execute(
                 "DELETE FROM autotier_provider_slots WHERE provider_id = ?1",
                 [provider_id],
             )
-            .map_err(|e| AppError::Database(format!("autotier_delete_slots_for_provider failed: {e}")))?;
+            .map_err(|e| {
+                AppError::Database(format!("autotier_delete_slots_for_provider failed: {e}"))
+            })?;
         Ok(count as u64)
     }
 
@@ -1036,7 +1037,10 @@ mod tests {
         db.autotier_upsert_decision(&row).unwrap();
         let fetched = db.autotier_get_decision("d-idem-final").unwrap().unwrap();
         assert_eq!(fetched.upstream_message_id, Some("msg-001".to_string()));
-        assert_eq!(fetched.usage_request_id, Some("session:msg-001".to_string()));
+        assert_eq!(
+            fetched.usage_request_id,
+            Some("session:msg-001".to_string())
+        );
         assert_eq!(fetched.actual_input_tokens, Some(100));
         assert_eq!(fetched.actual_cost_usd, Some("0.0015".to_string()));
         assert_eq!(fetched.status_code, Some(200));
@@ -1082,7 +1086,10 @@ mod tests {
         .unwrap();
 
         let fetched = db.autotier_get_decision("d-no-usage").unwrap().unwrap();
-        assert!(!fetched.is_complete, "没有 usage_request_id/token 不应标记 complete");
+        assert!(
+            !fetched.is_complete,
+            "没有 usage_request_id/token 不应标记 complete"
+        );
         assert_eq!(fetched.status_code, Some(200));
     }
 
@@ -1148,7 +1155,10 @@ mod tests {
         assert!(fetched.is_complete);
         assert_eq!(fetched.completed_at, Some(1_700_000_100));
         assert_eq!(fetched.upstream_message_id, Some("msg-001".to_string()));
-        assert_eq!(fetched.usage_request_id, Some("session:msg-001".to_string()));
+        assert_eq!(
+            fetched.usage_request_id,
+            Some("session:msg-001".to_string())
+        );
         assert_eq!(fetched.actual_input_tokens, Some(100));
         assert_eq!(fetched.actual_cost_usd, Some("0.0015".to_string()));
         assert_eq!(fetched.status_code, Some(200));

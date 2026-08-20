@@ -46,7 +46,10 @@ pub use codex_config::{
 };
 pub use commands::open_provider_terminal;
 pub use commands::*;
-pub use config::{get_claude_mcp_path, get_claude_settings_path, read_json_file};
+pub use config::{
+    get_app_config_dir, get_app_config_path as app_config_file_path, get_app_database_path,
+    get_claude_mcp_path, get_claude_settings_path, read_json_file,
+};
 pub use database::{AutotierDecisionRow, AutotierRoutingConfigDto, Database, Profile};
 pub use deeplink::{import_provider_from_deeplink, parse_deeplink_url, DeepLinkImportRequest};
 pub use error::AppError;
@@ -521,7 +524,7 @@ pub fn run() {
 
             // 初始化数据库
             let app_config_dir = crate::config::get_app_config_dir();
-            let db_path = app_config_dir.join("cc-switch.db");
+        let db_path = crate::config::get_app_database_path();
             let json_path = app_config_dir.join("config.json");
 
             // 检查是否需要从 config.json 迁移到 SQLite

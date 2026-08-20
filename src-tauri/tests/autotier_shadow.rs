@@ -299,7 +299,7 @@ fn set_autotier_mode(db: &Database, mode: &str) {
 
 fn db_file_path() -> std::path::PathBuf {
     let home = ensure_test_home().to_path_buf();
-    home.join(".cc-switch").join("cc-switch.db")
+    home.join(".autotier").join("autotier.db")
 }
 
 fn assert_shadow_unmutated(row: &AutotierDecisionRow) {
@@ -674,11 +674,12 @@ async fn shadow_db_failure_does_not_block_request() {
         .expect("set current provider");
 
     let db_path = db_file_path();
-    let mut perms = std::fs::metadata(&db_path)
+    let original_perms = std::fs::metadata(&db_path)
         .expect("get db metadata")
         .permissions();
-    perms.set_mode(0o444);
-    std::fs::set_permissions(&db_path, perms).expect("set db read-only");
+    let mut read_only = original_perms.clone();
+    read_only.set_mode(0o444);
+    std::fs::set_permissions(&db_path, read_only).expect("set db read-only");
 
     let info = state.proxy_service.start().await.expect("start proxy");
     let port = info.port;
@@ -689,6 +690,9 @@ async fn shadow_db_failure_does_not_block_request() {
     assert_eq!(body["model"], MODEL);
 
     state.proxy_service.stop().await.expect("stop proxy");
+
+    // Restore write permissions so reset_test_fs() can clean up for the next test.
+    std::fs::set_permissions(&db_path, original_perms).expect("restore db permissions");
 }
 
 #[allow(clippy::await_holding_lock)]

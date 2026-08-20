@@ -3,7 +3,7 @@
 //! 提供 SQL 导出/导入和二进制快照备份功能。
 
 use super::{lock_conn, Database};
-use crate::config::get_app_config_dir;
+use crate::config::{get_app_config_dir, get_app_database_path};
 use crate::error::AppError;
 use chrono::{Local, Utc};
 use rusqlite::backup::{Backup, StepResult};
@@ -510,7 +510,7 @@ impl Database {
     where
         F: FnOnce(&Path, &Path) -> Result<(), AppError>,
     {
-        let db_path = get_app_config_dir().join("cc-switch.db");
+        let db_path = get_app_database_path();
         if !db_path.exists() {
             return Ok(None);
         }

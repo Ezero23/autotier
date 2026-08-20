@@ -99,6 +99,13 @@ export const autotierTranslations = {
       clearConfirmBody:
         "This removes every stored Shadow decision and associated labels. Provider keys and baseline usage are not affected.",
       clearConfirmAction: "Clear decisions",
+      legacyImportTitle: "Legacy CC Switch data detected",
+      legacyImportBody:
+        "A read-only legacy database was found. You can copy it into ~/.autotier without modifying the source. Restart AutoTier after import to use the new data directory.",
+      legacyImportAction: "Copy legacy database",
+      legacyImportRunning: "Importing…",
+      legacyImportSuccess:
+        "Legacy data copied to {{path}}. Restart AutoTier to activate.",
     },
     decisions: {
       title: "Shadow decisions",
@@ -175,6 +182,19 @@ export const autotierTranslations = {
         background: "Background",
         unknown: "Unknown",
       },
+      exportButton: "Export bundle",
+      replayButton: "Replay export",
+      evalButton: "Evaluate holdout",
+      exportSuccessShort: "Export complete",
+      replaySuccessShort: "Replay complete",
+      evalSuccessShort: "Evaluation complete",
+      exportSuccess:
+        "Exported {{count}} decision(s) to {{dir}} (manifest + JSONL, no raw prompts).",
+      replaySuccess:
+        "Replayed {{replayed}} row(s): {{matched}} matched, {{mismatches}} mismatch(es).",
+      evalSuccess:
+        "Holdout {{holdout}} row(s), Strong recall {{recall}}%. {{warning}}",
+      evalNoWarnings: "Metrics computed with no extra warnings.",
     },
   },
   zh: {
@@ -275,6 +295,13 @@ export const autotierTranslations = {
       clearConfirmBody:
         "这将删除所有已存储的 Shadow 决策及关联标注。Provider Key 与基线用量不受影响。",
       clearConfirmAction: "清除决策",
+      legacyImportTitle: "检测到 legacy CC Switch 数据",
+      legacyImportBody:
+        "发现只读 legacy 数据库。可复制到 ~/.autotier，不会修改源数据。导入后请重启 AutoTier 以启用新数据目录。",
+      legacyImportAction: "复制 legacy 数据库",
+      legacyImportRunning: "导入中…",
+      legacyImportSuccess:
+        "Legacy 数据已复制到 {{path}}，请重启 AutoTier 生效。",
     },
     decisions: {
       title: "Shadow 决策",
@@ -304,8 +331,7 @@ export const autotierTranslations = {
       detailTitle: "决策详情",
       detailLoading: "正在加载详情…",
       detailMissing: "未找到该决策。",
-      shadowNotExecuted:
-        "Shadow 未执行候选模型——实际出站保持基线路径。",
+      shadowNotExecuted: "Shadow 未执行候选模型——实际出站保持基线路径。",
       groupClient: "客户端请求",
       groupBaseline: "基线出站",
       groupCandidate: "候选（未执行）",
@@ -351,6 +377,19 @@ export const autotierTranslations = {
         background: "Background",
         unknown: "未知",
       },
+      exportButton: "导出数据包",
+      replayButton: "Replay 导出",
+      evalButton: "Holdout 评估",
+      exportSuccessShort: "导出完成",
+      replaySuccessShort: "Replay 完成",
+      evalSuccessShort: "评估完成",
+      exportSuccess:
+        "已导出 {{count}} 条决策到 {{dir}}（manifest + JSONL，无原始 Prompt）。",
+      replaySuccess:
+        "Replay {{replayed}} 条：匹配 {{matched}}，不一致 {{mismatches}}。",
+      evalSuccess:
+        "Holdout {{holdout}} 条，Strong recall {{recall}}%。{{warning}}",
+      evalNoWarnings: "指标已计算，无额外警告。",
     },
   },
   ja: {
@@ -453,6 +492,13 @@ export const autotierTranslations = {
       clearConfirmBody:
         "保存済み Shadow Decision と関連ラベルをすべて削除します。Provider Key とベースライン Usage には影響しません。",
       clearConfirmAction: "Decision を削除",
+      legacyImportTitle: "legacy CC Switch データを検出",
+      legacyImportBody:
+        "読み取り専用 legacy DB が見つかりました。~/.autotier へコピーできます（ソースは変更しません）。インポート後 AutoTier を再起動してください。",
+      legacyImportAction: "legacy DB をコピー",
+      legacyImportRunning: "インポート中…",
+      legacyImportSuccess:
+        "legacy データを {{path}} にコピーしました。AutoTier を再起動してください。",
     },
     decisions: {
       title: "Shadow Decision",
@@ -529,6 +575,19 @@ export const autotierTranslations = {
         background: "Background",
         unknown: "不明",
       },
+      exportButton: "エクスポート",
+      replayButton: "Replay",
+      evalButton: "Holdout 評価",
+      exportSuccessShort: "エクスポート完了",
+      replaySuccessShort: "Replay 完了",
+      evalSuccessShort: "評価完了",
+      exportSuccess:
+        "{{count}} 件を {{dir}} にエクスポート（manifest + JSONL、Raw Prompt なし）。",
+      replaySuccess:
+        "Replay {{replayed}} 件：一致 {{matched}}、不一致 {{mismatches}}。",
+      evalSuccess:
+        "Holdout {{holdout}} 件、Strong recall {{recall}}%。{{warning}}",
+      evalNoWarnings: "追加警告なしで指標を計算しました。",
     },
   },
   "zh-TW": {
@@ -629,6 +688,13 @@ export const autotierTranslations = {
       clearConfirmBody:
         "這將刪除所有已儲存的 Shadow 決策及關聯標註。Provider Key 與基線用量不受影響。",
       clearConfirmAction: "清除決策",
+      legacyImportTitle: "偵測到 legacy CC Switch 資料",
+      legacyImportBody:
+        "發現唯讀 legacy 資料庫。可複製到 ~/.autotier，不會修改來源。匯入後請重新啟動 AutoTier。",
+      legacyImportAction: "複製 legacy 資料庫",
+      legacyImportRunning: "匯入中…",
+      legacyImportSuccess:
+        "Legacy 資料已複製到 {{path}}，請重新啟動 AutoTier。",
     },
     decisions: {
       title: "Shadow 決策",
@@ -658,8 +724,7 @@ export const autotierTranslations = {
       detailTitle: "決策詳情",
       detailLoading: "正在載入詳情…",
       detailMissing: "未找到該決策。",
-      shadowNotExecuted:
-        "Shadow 未執行候選模型——實際出站保持基線路徑。",
+      shadowNotExecuted: "Shadow 未執行候選模型——實際出站保持基線路徑。",
       groupClient: "用戶端請求",
       groupBaseline: "基線出站",
       groupCandidate: "候選（未執行）",
@@ -705,6 +770,19 @@ export const autotierTranslations = {
         background: "Background",
         unknown: "未知",
       },
+      exportButton: "匯出資料包",
+      replayButton: "Replay 匯出",
+      evalButton: "Holdout 評估",
+      exportSuccessShort: "匯出完成",
+      replaySuccessShort: "Replay 完成",
+      evalSuccessShort: "評估完成",
+      exportSuccess:
+        "已匯出 {{count}} 條決策到 {{dir}}（manifest + JSONL，無原始 Prompt）。",
+      replaySuccess:
+        "Replay {{replayed}} 條：匹配 {{matched}}，不一致 {{mismatches}}。",
+      evalSuccess:
+        "Holdout {{holdout}} 條，Strong recall {{recall}}%。{{warning}}",
+      evalNoWarnings: "指標已計算，無額外警告。",
     },
   },
 } as const;

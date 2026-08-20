@@ -341,7 +341,7 @@ async fn wait_for_log_rows(db_path: &Path, expected: usize, timeout: Duration) -
 }
 
 fn db_path() -> std::path::PathBuf {
-    ensure_test_home().join(".cc-switch").join("cc-switch.db")
+    ensure_test_home().join(".autotier").join("autotier.db")
 }
 
 fn set_autotier_mode(db: &Database, mode: &str) {

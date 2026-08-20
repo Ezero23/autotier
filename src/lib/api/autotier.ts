@@ -148,6 +148,60 @@ export interface UpsertDecisionLabelInput {
   note?: string | null;
 }
 
+export interface AutotierExportManifest {
+  export_schema_version: number;
+  generated_at: string;
+  decision_count: number;
+  label_count: number;
+  contains_raw_prompt: boolean;
+  contains_credentials: boolean;
+}
+
+export interface AutotierExportResult {
+  output_dir: string;
+  manifest: AutotierExportManifest;
+}
+
+export interface AutotierReplayReport {
+  replayed: number;
+  matched: number;
+  mismatches: Array<{
+    decision_id: string;
+    field: string;
+    expected: string;
+    actual: string;
+  }>;
+  malformed_rows: Array<{ line_number: number; error: string }>;
+}
+
+export interface AutotierEvalMetrics {
+  tune_count: number;
+  holdout_count: number;
+  strong_recall: number;
+  unsafe_downgrade: number;
+  cache_adjusted_saving_usd: number;
+  holdout_sample_sufficient: boolean;
+  warnings: string[];
+}
+
+export interface AutotierEvalReport {
+  sessions: number;
+  metrics: AutotierEvalMetrics;
+}
+
+export interface AutotierLegacyDataStatus {
+  legacy_dir: string;
+  legacy_db_exists: boolean;
+  autotier_dir: string;
+  autotier_db_exists: boolean;
+}
+
+export interface AutotierImportLegacyResult {
+  imported_from: string;
+  imported_to: string;
+  backup_path: string | null;
+}
+
 export type AutotierCommandErrorCode =
   | "illegal_mode"
   | "illegal_retention"
@@ -353,7 +407,9 @@ export const autotierApi = {
     return invokeAutotier("autotier_query_decisions", { filter });
   },
 
-  getDecisionDetail(decisionId: string): Promise<AutotierDecisionDetail | null> {
+  getDecisionDetail(
+    decisionId: string,
+  ): Promise<AutotierDecisionDetail | null> {
     return invokeAutotier("autotier_get_decision_detail", { decisionId });
   },
 
@@ -367,5 +423,31 @@ export const autotierApi = {
     decisionId: string,
   ): Promise<AutotierDecisionLabelRecord | null> {
     return invokeAutotier("autotier_get_decision_label", { decisionId });
+  },
+
+  exportDecisions(outputDir: string): Promise<AutotierExportResult> {
+    return invokeAutotier("autotier_export_decisions", { outputDir });
+  },
+
+  replayExport(exportDir: string): Promise<AutotierReplayReport> {
+    return invokeAutotier("autotier_replay_export", { exportDir });
+  },
+
+  evaluateExport(
+    exportDir: string,
+    splitSeed?: number,
+  ): Promise<AutotierEvalReport> {
+    return invokeAutotier("autotier_evaluate_export", {
+      exportDir,
+      splitSeed: splitSeed ?? null,
+    });
+  },
+
+  detectLegacyData(): Promise<AutotierLegacyDataStatus> {
+    return invokeAutotier("autotier_detect_legacy_data");
+  },
+
+  importLegacyData(): Promise<AutotierImportLegacyResult> {
+    return invokeAutotier("autotier_import_legacy_data");
   },
 };

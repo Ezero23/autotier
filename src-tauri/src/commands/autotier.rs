@@ -360,9 +360,15 @@ mod tests {
 
     fn json_has_secret(value: &serde_json::Value) -> bool {
         let encoded = value.to_string().to_ascii_lowercase();
-        ["api_key", "apikey", "authorization", "\"secret\"", "sk-ant-"]
-            .iter()
-            .any(|needle| encoded.contains(needle))
+        [
+            "api_key",
+            "apikey",
+            "authorization",
+            "\"secret\"",
+            "sk-ant-",
+        ]
+        .iter()
+        .any(|needle| encoded.contains(needle))
     }
 
     fn db() -> Database {

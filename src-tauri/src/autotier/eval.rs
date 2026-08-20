@@ -96,9 +96,11 @@ fn load_decisions(path: &Path) -> Result<Vec<ExportDecisionLine>, AppError> {
         if line.trim().is_empty() {
             continue;
         }
-        rows.push(serde_json::from_str(line).map_err(|e| {
-            AppError::InvalidInput(format!("decisions.jsonl parse failed: {e}"))
-        })?);
+        rows.push(
+            serde_json::from_str(line).map_err(|e| {
+                AppError::InvalidInput(format!("decisions.jsonl parse failed: {e}"))
+            })?,
+        );
     }
     Ok(rows)
 }

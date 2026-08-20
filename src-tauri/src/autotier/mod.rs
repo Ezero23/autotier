@@ -23,20 +23,22 @@
 
 mod cost;
 mod decision;
-pub mod export;
-pub mod replay;
 pub mod eval;
+pub mod export;
 mod extractor;
 mod features;
 mod observer;
+pub mod replay;
 mod writer;
 
+pub use cost::{CACHE_STATS_VERSION, CAPABILITY_TABLE_VERSION, COST_MODEL_VERSION};
 pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
     CLASSIFIER_VERSION, POLICY_VERSION,
 };
-pub use cost::{
-    CACHE_STATS_VERSION, CAPABILITY_TABLE_VERSION, COST_MODEL_VERSION,
+pub use export::{
+    export_bundle, scan_export_secrets, validate_export_dir, ExportBundleResult, ExportManifest,
+    EXPORT_SCHEMA_VERSION,
 };
 pub use extractor::{extract_features, FEATURE_VERSION};
 pub use features::{CountBucket, RoutingFeatures, TokenBucket};
@@ -44,10 +46,6 @@ pub use observer::{build_shadow_row, is_shadow_enabled, shadow_config_for_observ
 pub use writer::{
     enqueue_create, enqueue_finalize, enqueue_usage_finalize, hash_session_id,
     load_or_create_session_secret, writer_for, DecisionEvent, DecisionWriter, FinalizeEvent,
-};
-pub use export::{
-    export_bundle, scan_export_secrets, validate_export_dir, ExportBundleResult, ExportManifest,
-    EXPORT_SCHEMA_VERSION,
 };
 
 use crate::app_config::AppType;

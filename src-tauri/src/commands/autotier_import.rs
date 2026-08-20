@@ -88,8 +88,7 @@ pub fn import_legacy_copy_only() -> Result<ImportLegacyResult, AppError> {
     fs::create_dir_all(&staging).map_err(|e| AppError::io(&staging, e))?;
     fs::copy(&legacy_db, staging.join("db.tmp")).map_err(|e| AppError::io(&legacy_db, e))?;
     verify_sqlite(&staging.join("db.tmp"))?;
-    fs::rename(staging.join("db.tmp"), &target_db)
-        .map_err(|e| AppError::io(&target_db, e))?;
+    fs::rename(staging.join("db.tmp"), &target_db).map_err(|e| AppError::io(&target_db, e))?;
     let _ = fs::remove_dir(&staging);
 
     Ok(ImportLegacyResult {

@@ -95,7 +95,9 @@ pub struct ExportBundleResult {
 pub fn validate_export_dir(path: &str) -> Result<PathBuf, AppError> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return Err(AppError::InvalidInput("export directory is required".into()));
+        return Err(AppError::InvalidInput(
+            "export directory is required".into(),
+        ));
     }
     if trimmed.len() > 512 {
         return Err(AppError::InvalidInput("export path too long".into()));
@@ -332,9 +334,7 @@ pub fn export_bundle(db: &Database, output_dir: &Path) -> Result<ExportBundleRes
     atomic_write(&labels_path, labels_body.as_bytes())?;
     atomic_write(&manifest_path, manifest_json.as_bytes())?;
 
-    let total_bytes = fs::metadata(&decisions_path)
-        .map(|m| m.len())
-        .unwrap_or(0)
+    let total_bytes = fs::metadata(&decisions_path).map(|m| m.len()).unwrap_or(0)
         + fs::metadata(&labels_path).map(|m| m.len()).unwrap_or(0)
         + fs::metadata(&manifest_path).map(|m| m.len()).unwrap_or(0);
     if total_bytes > MAX_EXPORT_BYTES {
@@ -433,7 +433,8 @@ mod tests {
     #[test]
     fn export_writes_atomic_bundle() {
         let db = Database::memory().expect("memory db");
-        db.autotier_upsert_decision(&sample_row("d-export")).unwrap();
+        db.autotier_upsert_decision(&sample_row("d-export"))
+            .unwrap();
         db.autotier_upsert_label(&AutotierDecisionLabelDto {
             decision_id: "d-export".into(),
             label: "correct".into(),

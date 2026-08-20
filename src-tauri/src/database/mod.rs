@@ -32,6 +32,11 @@ mod schema;
 mod tests;
 
 // DAO 类型导出供外部使用
+pub use dao::autotier::{
+    AutotierDecisionDetail, AutotierDecisionLabelDto, AutotierDecisionListPage,
+    AutotierDecisionQueryFilter, AutotierDecisionRow, AutotierProviderSlotDto,
+    AutotierRoutingConfigDto, FinalizeDecisionParams,
+};
 pub(crate) use dao::providers_seed::{
     is_official_seed_id, CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID,
     GROKBUILD_OFFICIAL_PROVIDER_ID,
@@ -40,15 +45,10 @@ pub(crate) use dao::proxy::{
     validate_cost_multiplier, validate_pricing_source, PRICING_SOURCE_REQUEST,
     PRICING_SOURCE_RESPONSE,
 };
-pub use dao::autotier::{
-    AutotierDecisionDetail, AutotierDecisionLabelDto, AutotierDecisionListPage,
-    AutotierDecisionQueryFilter, AutotierDecisionRow, AutotierProviderSlotDto,
-    AutotierRoutingConfigDto, FinalizeDecisionParams,
-};
 pub use dao::FailoverQueueItem;
 pub use dao::Profile;
 
-use crate::config::get_app_config_dir;
+use crate::config::get_app_database_path;
 use crate::error::AppError;
 use rusqlite::{hooks::Action, Connection};
 use serde::Serialize;
@@ -105,9 +105,9 @@ fn register_db_change_hook(conn: &Connection) {
 impl Database {
     /// 初始化数据库连接并创建表
     ///
-    /// 数据库文件位于 `~/.cc-switch/cc-switch.db`
+    /// 数据库文件位于 `~/.autotier/autotier.db`（legacy 回退时为 `~/.cc-switch/cc-switch.db`）
     pub fn init() -> Result<Self, AppError> {
-        let db_path = get_app_config_dir().join("cc-switch.db");
+        let db_path = get_app_database_path();
         let db_exists = db_path.exists();
 
         // 确保父目录存在

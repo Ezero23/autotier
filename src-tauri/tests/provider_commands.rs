@@ -596,12 +596,10 @@ fn switch_provider_updates_claude_live_and_state() {
     // v3.7.0+ 使用 SQLite 数据库而非 config.json
     // 验证数据已持久化到数据库
     let home_dir = std::env::var("HOME").expect("HOME should be set by ensure_test_home");
-    let db_path = std::path::Path::new(&home_dir)
-        .join(".cc-switch")
-        .join("cc-switch.db");
+    let db_path = cc_switch_lib::get_app_database_path();
     assert!(
         db_path.exists(),
-        "switching provider should persist to cc-switch.db"
+        "switching provider should persist to autotier.db"
     );
 
     // 验证当前供应商已更新

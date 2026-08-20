@@ -117,9 +117,7 @@ pub struct AutotierDecisionDetail {
 }
 
 pub fn normalize_page_limit(limit: Option<i64>) -> i64 {
-    limit
-        .unwrap_or(DEFAULT_PAGE_SIZE)
-        .clamp(1, MAX_PAGE_SIZE)
+    limit.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE)
 }
 
 pub fn completion_status(row: &AutotierDecisionRow) -> AutotierDecisionCompletionStatus {
@@ -152,7 +150,10 @@ pub fn completion_status(row: &AutotierDecisionRow) -> AutotierDecisionCompletio
     }
 }
 
-fn list_item_from_row(row: AutotierDecisionRow, user_label: Option<String>) -> AutotierDecisionListItem {
+fn list_item_from_row(
+    row: AutotierDecisionRow,
+    user_label: Option<String>,
+) -> AutotierDecisionListItem {
     let completion = completion_status(&row);
     AutotierDecisionListItem {
         decision_id: row.decision_id,
@@ -240,8 +241,13 @@ struct QueryParts {
 }
 
 fn push_like(parts: &mut QueryParts, column: &str, value: &str) {
-    parts.where_sql.push_str(&format!(" AND {column} LIKE ? ESCAPE '\\'"));
-    let escaped = value.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    parts
+        .where_sql
+        .push_str(&format!(" AND {column} LIKE ? ESCAPE '\\'"));
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
     parts.params.push(Box::new(format!("%{escaped}%")));
 }
 
@@ -258,32 +264,66 @@ fn build_query_parts(filter: &AutotierDecisionQueryFilter) -> QueryParts {
         parts.where_sql.push_str(" AND d.created_at < ?");
         parts.params.push(Box::new(until));
     }
-    if let Some(session) = filter.session_id_hash.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(session) = filter
+        .session_id_hash
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         parts.where_sql.push_str(" AND d.session_id_hash = ?");
         parts.params.push(Box::new(session.to_string()));
     }
-    if let Some(app) = filter.app_type.as_ref().map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()) {
+    if let Some(app) = filter
+        .app_type
+        .as_ref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+    {
         parts.where_sql.push_str(" AND d.app_type = ?");
         parts.params.push(Box::new(app));
     }
-    if let Some(model) = filter.client_requested_model.as_ref().filter(|s| !s.trim().is_empty()) {
+    if let Some(model) = filter
+        .client_requested_model
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+    {
         push_like(&mut parts, "d.client_requested_model", model.trim());
     }
-    if let Some(slot) = filter.recommended_slot.as_ref().map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()) {
+    if let Some(slot) = filter
+        .recommended_slot
+        .as_ref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+    {
         parts.where_sql.push_str(" AND d.recommended_slot = ?");
         parts.params.push(Box::new(slot));
     }
-    if let Some(model) = filter.candidate_model.as_ref().filter(|s| !s.trim().is_empty()) {
+    if let Some(model) = filter
+        .candidate_model
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+    {
         push_like(&mut parts, "d.candidate_model", model.trim());
     }
-    if let Some(model) = filter.actual_outbound_model.as_ref().filter(|s| !s.trim().is_empty()) {
+    if let Some(model) = filter
+        .actual_outbound_model
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+    {
         push_like(&mut parts, "d.actual_outbound_model", model.trim());
     }
     if let Some(complete) = filter.is_complete {
         parts.where_sql.push_str(" AND d.is_complete = ?");
-        parts.params.push(Box::new(if complete { 1i64 } else { 0i64 }));
+        parts
+            .params
+            .push(Box::new(if complete { 1i64 } else { 0i64 }));
     }
-    if let Some(label) = filter.label.as_ref().map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()) {
+    if let Some(label) = filter
+        .label
+        .as_ref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+    {
         parts.where_sql.push_str(" AND l.label = ?");
         parts.params.push(Box::new(label));
     }
@@ -297,7 +337,9 @@ fn build_query_parts(filter: &AutotierDecisionQueryFilter) -> QueryParts {
     parts
 }
 
-fn map_decision_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(AutotierDecisionRow, Option<String>)> {
+fn map_decision_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<(AutotierDecisionRow, Option<String>)> {
     Ok((
         AutotierDecisionRow {
             decision_id: row.get(0)?,
@@ -389,7 +431,9 @@ impl Database {
                 params_from_iter(parts.params.iter().map(|p| p.as_ref())),
                 |row| row.get(0),
             )
-            .map_err(|e| AppError::Database(format!("autotier_query_decisions count failed: {e}")))?;
+            .map_err(|e| {
+                AppError::Database(format!("autotier_query_decisions count failed: {e}"))
+            })?;
 
         let list_sql = format!(
             "{DECISION_SELECT}
@@ -404,11 +448,14 @@ impl Database {
         list_params.push(Box::new(limit));
         list_params.push(Box::new(offset));
 
-        let mut stmt = conn
-            .prepare(&list_sql)
-            .map_err(|e| AppError::Database(format!("autotier_query_decisions prepare failed: {e}")))?;
+        let mut stmt = conn.prepare(&list_sql).map_err(|e| {
+            AppError::Database(format!("autotier_query_decisions prepare failed: {e}"))
+        })?;
         let rows = stmt
-            .query_map(params_from_iter(list_params.iter().map(|p| p.as_ref())), map_decision_row)
+            .query_map(
+                params_from_iter(list_params.iter().map(|p| p.as_ref())),
+                map_decision_row,
+            )
             .map_err(|e| AppError::Database(format!("autotier_query_decisions query failed: {e}")))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(format!("autotier_query_decisions row failed: {e}")))?;
@@ -519,7 +566,11 @@ mod tests {
         for i in 0..5 {
             let mut row = make_decision_row(&format!("d-q-{i}"));
             row.created_at = 10_000 + i;
-            row.app_type = if i % 2 == 0 { "claude".into() } else { "codex".into() };
+            row.app_type = if i % 2 == 0 {
+                "claude".into()
+            } else {
+                "codex".into()
+            };
             row.recommended_slot = Some("cheap".into());
             row.is_complete = i % 2 == 0;
             db.autotier_upsert_decision(&row).unwrap();
@@ -565,17 +616,24 @@ mod tests {
         })
         .unwrap();
 
-        let detail = db.autotier_get_decision_detail("d-detail").unwrap().unwrap();
+        let detail = db
+            .autotier_get_decision_detail("d-detail")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.decision_id, "d-detail");
         assert!(detail.completion.decision_complete);
         assert!(detail.completion.usage_linked);
-        assert_eq!(detail.user_label.as_ref().map(|l| l.label.as_str()), Some("correct"));
+        assert_eq!(
+            detail.user_label.as_ref().map(|l| l.label.as_str()),
+            Some("correct")
+        );
     }
 
     #[test]
     fn clear_cascades_labels() {
         let db = test_db();
-        db.autotier_upsert_decision(&make_decision_row("d-cascade")).unwrap();
+        db.autotier_upsert_decision(&make_decision_row("d-cascade"))
+            .unwrap();
         db.autotier_upsert_label(&AutotierDecisionLabelDto {
             decision_id: "d-cascade".into(),
             label: "unsure".into(),

@@ -567,4 +567,62 @@ export const handlers = [
   http.post(`${TAURI_ENDPOINT}/autotier_get_decision_label`, () =>
     success(null),
   ),
+  http.post(`${TAURI_ENDPOINT}/autotier_export_decisions`, () =>
+    success({
+      output_dir: "/tmp/autotier-export",
+      manifest: {
+        export_schema_version: 1,
+        generated_at: "2026-01-01T00:00:00Z",
+        decision_count: 1,
+        label_count: 0,
+        contains_raw_prompt: false,
+        contains_credentials: false,
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_replay_export`, () =>
+    success({
+      replayed: 1,
+      matched: 1,
+      mismatches: [],
+      malformed_rows: [],
+      manifest: {
+        export_schema_version: 1,
+        generated_at: "2026-01-01T00:00:00Z",
+        decision_count: 1,
+        label_count: 0,
+        contains_raw_prompt: false,
+        contains_credentials: false,
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_evaluate_export`, () =>
+    success({
+      sessions: 1,
+      metrics: {
+        tune_count: 1,
+        holdout_count: 0,
+        strong_recall: 0,
+        unsafe_downgrade: 0,
+        cache_adjusted_saving_usd: 0,
+        holdout_sample_sufficient: false,
+        warnings: ["holdout sample size 0 < minimum 30"],
+      },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_detect_legacy_data`, () =>
+    success({
+      legacy_dir: "/home/user/.cc-switch",
+      legacy_db_exists: false,
+      autotier_dir: "/home/user/.autotier",
+      autotier_db_exists: false,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/autotier_import_legacy_data`, () =>
+    success({
+      imported_from: "/home/user/.cc-switch/cc-switch.db",
+      imported_to: "/home/user/.autotier/autotier.db",
+      backup_path: null,
+    }),
+  ),
 ];
