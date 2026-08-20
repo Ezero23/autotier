@@ -134,6 +134,12 @@ export interface AutotierDecisionQueryFilter {
   recommended_slot?: string;
   candidate_model?: string;
   actual_outbound_model?: string;
+  provider?: string;
+  reason_code?: string;
+  unsafe_reason?: string;
+  confidence_min?: number;
+  confidence_max?: number;
+  cache_protected?: boolean;
   is_complete?: boolean;
   label?: string;
   has_label?: boolean;
@@ -248,6 +254,25 @@ export interface AutotierProviderSlot {
   created_at: number;
   updated_at: number;
 }
+
+export interface AutotierProviderModelPricing {
+  provider_id: string;
+  model_id: string;
+  display_name: string;
+  input_cost_per_million: string;
+  output_cost_per_million: string;
+  cache_read_cost_per_million: string;
+  cache_creation_cost_per_million: string;
+  price_source: string;
+  observed_at: number;
+}
+
+export type AutotierProviderModelPricingInput = Omit<
+  AutotierProviderModelPricing,
+  "observed_at"
+> & {
+  price_source?: string | null;
+};
 
 export interface AutotierRequiredSlotsStatus {
   provider_id: string;
@@ -373,7 +398,27 @@ export const autotierApi = {
   listProviderSlots(providerId: string): Promise<AutotierProviderSlot[]> {
     return invokeAutotier("autotier_list_provider_slots", { providerId });
   },
-
+  listProviderModelPricing(
+    providerId: string,
+  ): Promise<AutotierProviderModelPricing[]> {
+    return invokeAutotier("autotier_list_provider_model_pricing", {
+      providerId,
+    });
+  },
+  upsertProviderModelPricing(
+    input: AutotierProviderModelPricingInput,
+  ): Promise<AutotierProviderModelPricing> {
+    return invokeAutotier("autotier_upsert_provider_model_pricing", { input });
+  },
+  deleteProviderModelPricing(
+    providerId: string,
+    modelId: string,
+  ): Promise<number> {
+    return invokeAutotier("autotier_delete_provider_model_pricing", {
+      providerId,
+      modelId,
+    });
+  },
   upsertProviderSlot(
     slot: AutotierProviderSlot,
   ): Promise<AutotierProviderSlot> {

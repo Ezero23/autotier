@@ -1030,7 +1030,7 @@ pub fn run() {
                     let should_register = app
                         .path()
                         .data_dir()
-                        .map(|d| !d.join("applications/cc-switch-handler.desktop").exists())
+                        .map(|d| !d.join("applications/autotier-handler.desktop").exists())
                         .unwrap_or(true);
 
                     if should_register {
@@ -1712,6 +1712,9 @@ pub fn run() {
             commands::autotier_upsert_provider_slot,
             commands::autotier_delete_provider_slot,
             commands::autotier_required_slots_status,
+            commands::autotier_list_provider_model_pricing,
+            commands::autotier_upsert_provider_model_pricing,
+            commands::autotier_delete_provider_model_pricing,
             commands::autotier_clear_decisions,
             commands::autotier_prune_decisions,
             commands::autotier_query_decisions,

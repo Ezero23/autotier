@@ -142,6 +142,11 @@ function AutotierDecisionsPanelInner() {
   const [appType, setAppType] = useState<string>("all");
   const [completeFilter, setCompleteFilter] = useState<string>("all");
   const [labelFilter, setLabelFilter] = useState<string>("all");
+  const [providerFilter, setProviderFilter] = useState("");
+  const [reasonFilter, setReasonFilter] = useState("");
+  const [unsafeReasonFilter, setUnsafeReasonFilter] = useState("");
+  const [confidenceFilter, setConfidenceFilter] = useState("all");
+  const [cacheFilter, setCacheFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] =
     useState<AutotierDecisionLabel>("correct");
@@ -160,8 +165,31 @@ function AutotierDecisionsPanelInner() {
     if (completeFilter === "incomplete") next.is_complete = false;
     if (labelFilter === "labeled") next.has_label = true;
     if (labelFilter === "unlabeled") next.has_label = false;
+    if (providerFilter.trim()) next.provider = providerFilter.trim();
+    if (reasonFilter.trim()) next.reason_code = reasonFilter.trim();
+    if (unsafeReasonFilter.trim()) {
+      next.unsafe_reason = unsafeReasonFilter.trim();
+    }
+    if (confidenceFilter === "high") next.confidence_min = 0.8;
+    if (confidenceFilter === "medium") {
+      next.confidence_min = 0.5;
+      next.confidence_max = 0.8;
+    }
+    if (confidenceFilter === "low") next.confidence_max = 0.5;
+    if (cacheFilter === "protected") next.cache_protected = true;
+    if (cacheFilter === "unprotected") next.cache_protected = false;
     return next;
-  }, [appType, completeFilter, labelFilter, offset]);
+  }, [
+    appType,
+    cacheFilter,
+    completeFilter,
+    confidenceFilter,
+    labelFilter,
+    offset,
+    providerFilter,
+    reasonFilter,
+    unsafeReasonFilter,
+  ]);
 
   const listQuery = useAutotierDecisions(filter);
   const detailQuery = useAutotierDecisionDetail(selectedId);
@@ -431,6 +459,122 @@ function AutotierDecisionsPanelInner() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label>
+                {t("autotier.decisions.filterProvider", {
+                  defaultValue: "Provider",
+                })}
+              </Label>
+              <ImeSafeInput
+                value={providerFilter}
+                onValueChange={(value) => {
+                  setProviderFilter(value);
+                  setOffset(0);
+                }}
+                placeholder={t("autotier.decisions.filterProviderPlaceholder", {
+                  defaultValue: "Provider ID",
+                })}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>
+                {t("autotier.decisions.filterReason", {
+                  defaultValue: "Reason",
+                })}
+              </Label>
+              <ImeSafeInput
+                value={reasonFilter}
+                onValueChange={(value) => {
+                  setReasonFilter(value);
+                  setOffset(0);
+                }}
+                placeholder={t("autotier.decisions.filterReasonPlaceholder", {
+                  defaultValue: "Reason code",
+                })}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>
+                {t("autotier.decisions.filterUnsafeReason", {
+                  defaultValue: "Unsafe reason",
+                })}
+              </Label>
+              <ImeSafeInput
+                value={unsafeReasonFilter}
+                onValueChange={(value) => {
+                  setUnsafeReasonFilter(value);
+                  setOffset(0);
+                }}
+                placeholder={t(
+                  "autotier.decisions.filterUnsafeReasonPlaceholder",
+                  {
+                    defaultValue: "Unsafe reason",
+                  },
+                )}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>
+                {t("autotier.decisions.filterConfidence", {
+                  defaultValue: "Confidence",
+                })}
+              </Label>
+              <Select
+                value={confidenceFilter}
+                onValueChange={(value) => {
+                  setConfidenceFilter(value);
+                  setOffset(0);
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {t("autotier.decisions.filterAll")}
+                  </SelectItem>
+                  <SelectItem value="high">≥ 0.80</SelectItem>
+                  <SelectItem value="medium">0.50–0.80</SelectItem>
+                  <SelectItem value="low">&lt; 0.50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>
+                {t("autotier.decisions.filterCache", {
+                  defaultValue: "Cache protection",
+                })}
+              </Label>
+              <Select
+                value={cacheFilter}
+                onValueChange={(value) => {
+                  setCacheFilter(value);
+                  setOffset(0);
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {t("autotier.decisions.filterAll")}
+                  </SelectItem>
+                  <SelectItem value="protected">
+                    {t("autotier.decisions.cacheProtected", {
+                      defaultValue: "Protected",
+                    })}
+                  </SelectItem>
+                  <SelectItem value="unprotected">
+                    {t("autotier.decisions.cacheUnprotected", {
+                      defaultValue: "Not protected",
+                    })}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {items.length === 0 ? (
@@ -626,6 +770,92 @@ function AutotierDecisionsPanelInner() {
                         detail.candidate_cost_high_usd,
                         emptyValue,
                       )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.mutatedRequest", {
+                        defaultValue: "AutoTier mutated request",
+                      })}
+                    </p>
+                    <p>{detail.autotier_mutated_request ? "true" : "false"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.safeToExecute", {
+                        defaultValue: "Safe to execute",
+                      })}
+                    </p>
+                    <p>{detail.safe_to_execute ? "true" : "false"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.actualUsage", {
+                        defaultValue: "Actual usage",
+                      })}
+                    </p>
+                    <p className="font-mono text-xs">
+                      in {detail.actual_input_tokens ?? emptyValue} · out{" "}
+                      {detail.actual_output_tokens ?? emptyValue} · read{" "}
+                      {detail.actual_cache_read_tokens ?? emptyValue} · write{" "}
+                      {detail.actual_cache_write_5m_tokens ?? emptyValue}/
+                      {detail.actual_cache_write_1h_tokens ?? emptyValue}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.actualCost", {
+                        defaultValue: "Actual cost",
+                      })}
+                    </p>
+                    <p className="font-mono text-xs">
+                      {detail.actual_cost_usd ?? emptyValue}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.status", {
+                        defaultValue: "Status / outcome",
+                      })}
+                    </p>
+                    <p>
+                      {detail.status_code ?? emptyValue} /{" "}
+                      {detail.outcome ?? emptyValue}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.retryFallback", {
+                        defaultValue: "Retry / fallback",
+                      })}
+                    </p>
+                    <p>
+                      {detail.retry_count} / {detail.fallback_count}
+                    </p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.costAssumptions", {
+                        defaultValue: "Cost assumptions",
+                      })}
+                    </p>
+                    <p className="font-mono text-xs break-all">
+                      {detail.cost_assumptions_json || emptyValue}
+                    </p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t("autotier.decisions.versionStamps", {
+                        defaultValue: "Version stamps",
+                      })}
+                    </p>
+                    <p className="font-mono text-xs break-all">
+                      feature={detail.feature_version} · classifier=
+                      {detail.classifier_version} · policy=
+                      {detail.policy_version}
                     </p>
                   </div>
                 </div>

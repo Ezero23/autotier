@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   autotierApi,
   type AutotierDecisionQueryFilter,
+  type AutotierProviderModelPricingInput,
   type AutotierProviderSlot,
   type AutotierRetentionDays,
   type AutotierSaveConfigInput,
@@ -14,6 +15,7 @@ export const autotierKeys = {
   slots: (providerId: string) => ["autotier", "slots", providerId] as const,
   required: (providerId: string) =>
     ["autotier", "required", providerId] as const,
+  pricing: (providerId: string) => ["autotier", "pricing", providerId] as const,
   decisions: (filter: AutotierDecisionQueryFilter) =>
     ["autotier", "decisions", filter] as const,
   decisionDetail: (decisionId: string) =>
@@ -45,6 +47,43 @@ export function useAutotierProviderSlots(providerId: string, enabled = true) {
     queryKey: autotierKeys.slots(providerId),
     queryFn: () => autotierApi.listProviderSlots(providerId),
     enabled: enabled && providerId.length > 0,
+  });
+}
+
+export function useAutotierProviderModelPricing(
+  providerId: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: autotierKeys.pricing(providerId),
+    queryFn: () => autotierApi.listProviderModelPricing(providerId),
+    enabled: enabled && providerId.length > 0,
+  });
+}
+
+export function useUpsertAutotierProviderModelPricing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AutotierProviderModelPricingInput) =>
+      autotierApi.upsertProviderModelPricing(input),
+    onSuccess: (row) => {
+      queryClient.invalidateQueries({
+        queryKey: autotierKeys.pricing(row.provider_id),
+      });
+    },
+  });
+}
+
+export function useDeleteAutotierProviderModelPricing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { providerId: string; modelId: string }) =>
+      autotierApi.deleteProviderModelPricing(args.providerId, args.modelId),
+    onSuccess: (_count, args) => {
+      queryClient.invalidateQueries({
+        queryKey: autotierKeys.pricing(args.providerId),
+      });
+    },
   });
 }
 

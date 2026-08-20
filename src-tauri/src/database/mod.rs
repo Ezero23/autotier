@@ -34,8 +34,9 @@ mod tests;
 // DAO 类型导出供外部使用
 pub use dao::autotier::{
     AutotierDecisionDetail, AutotierDecisionLabelDto, AutotierDecisionListPage,
-    AutotierDecisionQueryFilter, AutotierDecisionRow, AutotierProviderSlotDto,
-    AutotierRoutingConfigDto, FinalizeDecisionParams,
+    AutotierDecisionQueryFilter, AutotierDecisionRow, AutotierProviderModelPricingDto,
+    AutotierProviderSlotDto, AutotierRoutingConfigDto, FinalizeDecisionParams,
+    UpsertAutotierProviderModelPricingInput,
 };
 pub(crate) use dao::providers_seed::{
     is_official_seed_id, CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID,

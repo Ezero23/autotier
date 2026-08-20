@@ -64,6 +64,33 @@ pub struct AutotierProviderSlotDto {
     pub updated_at: i64,
 }
 
+/// `provider_model_pricing` Provider-specific 定价快照行 DTO。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AutotierProviderModelPricingDto {
+    pub provider_id: String,
+    pub model_id: String,
+    pub display_name: String,
+    pub input_cost_per_million: String,
+    pub output_cost_per_million: String,
+    pub cache_read_cost_per_million: String,
+    pub cache_creation_cost_per_million: String,
+    pub price_source: String,
+    pub observed_at: i64,
+}
+
+/// Provider-specific 定价快照写入输入，不允许前端伪造 observed_at。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpsertAutotierProviderModelPricingInput {
+    pub provider_id: String,
+    pub model_id: String,
+    pub display_name: String,
+    pub input_cost_per_million: String,
+    pub output_cost_per_million: String,
+    pub cache_read_cost_per_million: String,
+    pub cache_creation_cost_per_million: String,
+    pub price_source: Option<String>,
+}
+
 /// `autotier_routing_decisions` 行 DTO（PRD §11.3）。
 ///
 /// 用于插入和查询决策记录。JSON 字段以字符串存储。
@@ -145,6 +172,98 @@ pub struct AutotierDecisionLabelDto {
     pub note: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+// ---------------------------------------------------------------------------
+// Provider-specific pricing DAO
+// ---------------------------------------------------------------------------
+
+impl Database {
+    pub fn autotier_list_provider_model_pricing(
+        &self,
+        provider_id: &str,
+    ) -> Result<Vec<AutotierProviderModelPricingDto>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare(
+                "SELECT provider_id, model_id, display_name,
+                        input_cost_per_million, output_cost_per_million,
+                        cache_read_cost_per_million, cache_creation_cost_per_million,
+                        price_source, observed_at
+                 FROM provider_model_pricing
+                 WHERE provider_id = ?1
+                 ORDER BY model_id COLLATE NOCASE",
+            )
+            .map_err(|e| AppError::Database(format!("list provider pricing failed: {e}")))?;
+        let rows = stmt
+            .query_map(params![provider_id], |row| {
+                Ok(AutotierProviderModelPricingDto {
+                    provider_id: row.get(0)?,
+                    model_id: row.get(1)?,
+                    display_name: row.get(2)?,
+                    input_cost_per_million: row.get(3)?,
+                    output_cost_per_million: row.get(4)?,
+                    cache_read_cost_per_million: row.get(5)?,
+                    cache_creation_cost_per_million: row.get(6)?,
+                    price_source: row.get(7)?,
+                    observed_at: row.get(8)?,
+                })
+            })
+            .map_err(|e| AppError::Database(format!("read provider pricing failed: {e}")))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(format!("decode provider pricing failed: {e}")))
+    }
+
+    pub fn autotier_upsert_provider_model_pricing(
+        &self,
+        row: &AutotierProviderModelPricingDto,
+    ) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "INSERT INTO provider_model_pricing (
+                provider_id, model_id, display_name,
+                input_cost_per_million, output_cost_per_million,
+                cache_read_cost_per_million, cache_creation_cost_per_million,
+                price_source, observed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(provider_id, model_id) DO UPDATE SET
+                display_name = excluded.display_name,
+                input_cost_per_million = excluded.input_cost_per_million,
+                output_cost_per_million = excluded.output_cost_per_million,
+                cache_read_cost_per_million = excluded.cache_read_cost_per_million,
+                cache_creation_cost_per_million = excluded.cache_creation_cost_per_million,
+                price_source = excluded.price_source,
+                observed_at = excluded.observed_at",
+            params![
+                row.provider_id,
+                row.model_id,
+                row.display_name,
+                row.input_cost_per_million,
+                row.output_cost_per_million,
+                row.cache_read_cost_per_million,
+                row.cache_creation_cost_per_million,
+                row.price_source,
+                row.observed_at,
+            ],
+        )
+        .map_err(|e| AppError::Database(format!("upsert provider pricing failed: {e}")))?;
+        Ok(())
+    }
+
+    pub fn autotier_delete_provider_model_pricing(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+    ) -> Result<u64, AppError> {
+        let conn = lock_conn!(self.conn);
+        let deleted = conn
+            .execute(
+                "DELETE FROM provider_model_pricing WHERE provider_id = ?1 AND model_id = ?2",
+                params![provider_id, model_id],
+            )
+            .map_err(|e| AppError::Database(format!("delete provider pricing failed: {e}")))?;
+        Ok(deleted as u64)
+    }
 }
 
 // ---------------------------------------------------------------------------

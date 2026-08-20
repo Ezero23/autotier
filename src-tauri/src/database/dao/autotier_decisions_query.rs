@@ -19,6 +19,12 @@ pub struct AutotierDecisionQueryFilter {
     pub recommended_slot: Option<String>,
     pub candidate_model: Option<String>,
     pub actual_outbound_model: Option<String>,
+    pub provider: Option<String>,
+    pub reason_code: Option<String>,
+    pub unsafe_reason: Option<String>,
+    pub confidence_min: Option<f64>,
+    pub confidence_max: Option<f64>,
+    pub cache_protected: Option<bool>,
     pub is_complete: Option<bool>,
     pub label: Option<String>,
     pub has_label: Option<bool>,
@@ -240,15 +246,19 @@ struct QueryParts {
     params: Vec<Box<dyn ToSql>>,
 }
 
-fn push_like(parts: &mut QueryParts, column: &str, value: &str) {
-    parts
-        .where_sql
-        .push_str(&format!(" AND {column} LIKE ? ESCAPE '\\'"));
+fn escaped_like_pattern(value: &str) -> String {
     let escaped = value
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_");
-    parts.params.push(Box::new(format!("%{escaped}%")));
+    format!("%{escaped}%")
+}
+
+fn push_like(parts: &mut QueryParts, column: &str, value: &str) {
+    parts
+        .where_sql
+        .push_str(&format!(" AND {column} LIKE ? ESCAPE '\\'"));
+    parts.params.push(Box::new(escaped_like_pattern(value)));
 }
 
 fn build_query_parts(filter: &AutotierDecisionQueryFilter) -> QueryParts {
@@ -311,6 +321,60 @@ fn build_query_parts(filter: &AutotierDecisionQueryFilter) -> QueryParts {
         .filter(|s| !s.trim().is_empty())
     {
         push_like(&mut parts, "d.actual_outbound_model", model.trim());
+    }
+    if let Some(provider) = filter
+        .provider
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        let pattern = escaped_like_pattern(provider);
+        parts.where_sql.push_str(
+            " AND (d.initial_selected_provider LIKE ? ESCAPE '\\'
+                OR d.baseline_outbound_provider LIKE ? ESCAPE '\\'
+                OR d.candidate_provider LIKE ? ESCAPE '\\'
+                OR d.actual_outbound_provider LIKE ? ESCAPE '\\')",
+        );
+        for _ in 0..4 {
+            parts.params.push(Box::new(pattern.clone()));
+        }
+    }
+    if let Some(reason) = filter
+        .reason_code
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        push_like(&mut parts, "d.reason_codes_json", reason);
+    }
+    if let Some(reason) = filter
+        .unsafe_reason
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        push_like(&mut parts, "d.unsafe_reasons_json", reason);
+    }
+    if let Some(min) = filter.confidence_min {
+        parts
+            .where_sql
+            .push_str(" AND COALESCE(d.confidence, 0) >= ?");
+        parts.params.push(Box::new(min));
+    }
+    if let Some(max) = filter.confidence_max {
+        parts
+            .where_sql
+            .push_str(" AND COALESCE(d.confidence, 0) <= ?");
+        parts.params.push(Box::new(max));
+    }
+    if let Some(cache_protected) = filter.cache_protected {
+        let cache_sql = "(d.reason_codes_json LIKE '%CACHE%' OR d.unsafe_reasons_json LIKE '%CACHE%' OR d.actual_cache_read_tokens IS NOT NULL OR d.actual_cache_write_5m_tokens IS NOT NULL OR d.actual_cache_write_1h_tokens IS NOT NULL)";
+        parts.where_sql.push_str(if cache_protected {
+            " AND "
+        } else {
+            " AND NOT "
+        });
+        parts.where_sql.push_str(cache_sql);
     }
     if let Some(complete) = filter.is_complete {
         parts.where_sql.push_str(" AND d.is_complete = ?");
@@ -646,5 +710,46 @@ mod tests {
         db.autotier_clear_all_decisions().unwrap();
         assert_eq!(db.autotier_count_decisions().unwrap(), 0);
         assert_eq!(db.autotier_count_labels().unwrap(), 0);
+    }
+
+    #[test]
+    fn query_filters_provider_reason_confidence_and_cache() {
+        let db = test_db();
+        let mut cached = make_decision_row("d-filter-cached");
+        cached.initial_selected_provider = Some("provider-a".into());
+        cached.candidate_provider = Some("provider-a".into());
+        cached.reason_codes_json = r#"["CACHE_PROTECTED"]"#.into();
+        cached.confidence = Some(0.9);
+        cached.actual_cache_read_tokens = Some(12);
+        db.autotier_upsert_decision(&cached).unwrap();
+
+        let mut uncached = make_decision_row("d-filter-uncached");
+        uncached.initial_selected_provider = Some("provider-b".into());
+        uncached.candidate_provider = Some("provider-b".into());
+        uncached.reason_codes_json = r#"["SHORT_USER_REQUEST"]"#.into();
+        uncached.confidence = Some(0.3);
+        db.autotier_upsert_decision(&uncached).unwrap();
+
+        let page = db
+            .autotier_query_decisions(&AutotierDecisionQueryFilter {
+                provider: Some("provider-a".into()),
+                reason_code: Some("CACHE_PROTECTED".into()),
+                confidence_min: Some(0.8),
+                cache_protected: Some(true),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].decision_id, "d-filter-cached");
+
+        let page = db
+            .autotier_query_decisions(&AutotierDecisionQueryFilter {
+                confidence_max: Some(0.5),
+                cache_protected: Some(false),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].decision_id, "d-filter-uncached");
     }
 }
