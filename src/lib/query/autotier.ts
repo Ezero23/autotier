@@ -89,15 +89,23 @@ export function useAutotierRequiredSlots(providerId: string, enabled = true) {
 }
 
 export function useClearAutotierDecisions() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => autotierApi.clearDecisions(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: autotierKeys.all });
+    },
   });
 }
 
 export function usePruneAutotierDecisions() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (retentionDays?: AutotierRetentionDays) =>
       autotierApi.pruneDecisions(retentionDays),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: autotierKeys.all });
+    },
   });
 }
 
@@ -168,7 +176,7 @@ export function useImportAutotierLegacyData() {
   return useMutation({
     mutationFn: () => autotierApi.importLegacyData(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: autotierKeys.legacy });
+      queryClient.invalidateQueries({ queryKey: autotierKeys.all });
     },
   });
 }

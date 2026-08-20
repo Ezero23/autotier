@@ -43,8 +43,7 @@ pub fn detect_legacy_data() -> LegacyDataStatus {
         legacy_dir: legacy_dir.display().to_string(),
         legacy_db_exists: legacy_dir.join(LEGACY_DB).is_file(),
         autotier_dir: autotier_dir.display().to_string(),
-        autotier_db_exists: autotier_dir.join(AUTOTIER_DB).is_file()
-            || autotier_dir.join(LEGACY_DB).is_file(),
+        autotier_db_exists: autotier_dir.join(AUTOTIER_DB).is_file(),
     }
 }
 

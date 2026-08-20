@@ -43,9 +43,9 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
 
     // 检查 messages 字段是否存在且为数组；缺失或类型错误 → Unparseable。
     let messages_raw = body.get("messages");
-    let (messages, extraction_status) = match messages_raw {
-        Some(Value::Array(arr)) => (arr.clone(), ExtractionStatus::Success),
-        _ => (Vec::new(), ExtractionStatus::Unparseable),
+    let (messages, extraction_status): (&[Value], ExtractionStatus) = match messages_raw {
+        Some(Value::Array(arr)) => (arr.as_slice(), ExtractionStatus::Success),
+        _ => (&[], ExtractionStatus::Unparseable),
     };
 
     let mut user_weighted_len: u32 = 0;
@@ -59,7 +59,7 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
     let mut total_chars: u64 = 0;
     let mut cache_write_chars: u64 = 0;
 
-    for msg in &messages {
+    for msg in messages {
         let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
         if role == "user" {
             user_turns += 1;

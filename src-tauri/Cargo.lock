@@ -757,7 +757,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cc-switch"
+name = "autotier"
 version = "0.1.0"
 dependencies = [
  "anyhow",

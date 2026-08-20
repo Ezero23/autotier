@@ -10,7 +10,7 @@
 #[path = "support.rs"]
 mod support;
 
-use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -300,6 +300,20 @@ fn set_autotier_mode(db: &Database, mode: &str) {
 fn db_file_path() -> std::path::PathBuf {
     let home = ensure_test_home().to_path_buf();
     home.join(".autotier").join("autotier.db")
+}
+
+fn set_read_only(path: &Path) -> std::io::Result<std::fs::Permissions> {
+    let original = std::fs::metadata(path)?.permissions();
+    let mut read_only = original.clone();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        read_only.set_mode(0o444);
+    }
+    #[cfg(windows)]
+    read_only.set_readonly(true);
+    std::fs::set_permissions(path, read_only)?;
+    Ok(original)
 }
 
 fn assert_shadow_unmutated(row: &AutotierDecisionRow) {
@@ -674,12 +688,7 @@ async fn shadow_db_failure_does_not_block_request() {
         .expect("set current provider");
 
     let db_path = db_file_path();
-    let original_perms = std::fs::metadata(&db_path)
-        .expect("get db metadata")
-        .permissions();
-    let mut read_only = original_perms.clone();
-    read_only.set_mode(0o444);
-    std::fs::set_permissions(&db_path, read_only).expect("set db read-only");
+    let original_perms = set_read_only(&db_path).expect("set db read-only");
 
     let info = state.proxy_service.start().await.expect("start proxy");
     let port = info.port;

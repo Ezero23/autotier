@@ -238,12 +238,17 @@ async fn handle_messages_for_app(
     let response = result.response;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
-    let adapter = get_adapter(&app_type).ok_or_else(|| {
-        ProxyError::ConfigError(format!(
-            "{} does not support proxy routing",
-            app_type.as_str()
-        ))
-    })?;
+    let adapter = match get_adapter(&app_type) {
+        Some(adapter) => adapter,
+        None => {
+            let error = ProxyError::ConfigError(format!(
+                "{} does not support proxy routing",
+                app_type.as_str()
+            ));
+            enqueue_autotier_finalize_error(&state, &ctx, &error);
+            return Err(error);
+        }
+    };
     let needs_transform = adapter.needs_transform(&ctx.provider);
 
     // Claude 特有：格式转换处理
@@ -764,6 +769,9 @@ async fn handle_claude_transform(
         Ok(response) => response,
         Err(error) => {
             log::error!("[Claude] 转换响应失败: {error}");
+            // The upstream request succeeded, but the client-visible response did not.
+            // Override the optimistic post-forward success with an auditable error terminal state.
+            enqueue_autotier_finalize_error(state, ctx, &error);
             if usage_logging_enabled(state) {
                 if let Some(log) = raw_usage_response.as_ref().and_then(|response| {
                     prepare_claude_usage_log(ctx, response, status.as_u16(), false)
