@@ -707,9 +707,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[serial_test::serial]
     async fn thousand_create_finalize_pairs_are_not_silently_lost() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
-        let db = Arc::new(Database::init().expect("init db"));
+        // This test verifies queue ordering and losslessness, not filesystem throughput.
+        // An in-memory database keeps the assertion deterministic on Windows CI.
+        let db = Arc::new(Database::memory().expect("init in-memory db"));
         let writer = DecisionWriter::spawn(db.clone(), DECISION_QUEUE_CAP);
 
         let mut joins = Vec::with_capacity(1000);

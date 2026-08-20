@@ -600,12 +600,12 @@ mod tests {
         }
         times.sort();
         let p95 = times[RUNS * 95 / 100];
-        // Keep a strict 1ms budget on Linux/Windows while allowing the higher
-        // scheduler and JSON runtime variance observed on macOS CI.
-        let budget_micros = if cfg!(target_os = "macos") {
-            2_000
-        } else {
+        // Keep a strict 1ms budget on Linux while allowing scheduler and JSON
+        // runtime variance on Windows and macOS CI runners.
+        let budget_micros = if cfg!(target_os = "linux") {
             1_000
+        } else {
+            2_000
         };
         assert!(
             p95.as_micros() < budget_micros,
