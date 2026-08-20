@@ -193,10 +193,15 @@ jobs:
           NODE
 
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true' && secrets.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then
+            echo "⚠️ APPLE_CERTIFICATE not set — skipping Apple cert import"
+            exit 0
+          fi
+
           # Decode .p12 certificate from base64
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           printf '%s' "${{ secrets.APPLE_CERTIFICATE }}" | (base64 --decode 2>/dev/null || base64 -D) > "$CERT_PATH"
@@ -353,7 +358,7 @@ jobs:
           fi
 
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS' && secrets.APPLE_ID != '' && secrets.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         timeout-minutes: 30
         env:
@@ -395,7 +400,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail

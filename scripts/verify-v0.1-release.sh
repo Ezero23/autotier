@@ -78,13 +78,7 @@ skip_step "E2E-11" "Decision panel UI" "covered by vitest; full GUI manual"
 # Optional local Linux .deb (unsigned) when building on Linux CI/dev VM
 if [ "$(uname -s)" = "Linux" ] && command -v pnpm >/dev/null; then
   run_step "BUILD-1" "Linux .deb (unsigned)" bash -c '
-    node - <<'"'"'NODE'"'"'
-    const fs = require("fs");
-    const p = "src-tauri/tauri.conf.json";
-    const j = JSON.parse(fs.readFileSync(p, "utf8"));
-    j.bundle.createUpdaterArtifacts = false;
-    fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
-    NODE
+    node -e "const fs=require(\"fs\");const p=\"src-tauri/tauri.conf.json\";const j=JSON.parse(fs.readFileSync(p,\"utf8\"));j.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(j,null,2)+\"\\n\");"
     pnpm tauri build --bundles deb
     test -f src-tauri/target/release/bundle/deb/AutoTier_0.1.0_amd64.deb
   '
