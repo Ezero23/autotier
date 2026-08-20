@@ -102,7 +102,7 @@ pub struct WebDavSyncStatus {
 }
 
 fn default_remote_root() -> String {
-    "cc-switch-sync".to_string()
+    "autotier-sync".to_string()
 }
 fn default_profile() -> String {
     "default".to_string()
@@ -340,7 +340,7 @@ pub struct CodexOfficialHistoryUnifyMigration {
 
 /// 应用设置结构
 ///
-/// 存储设备级别设置，保存在本地 `~/.cc-switch/settings.json`，不随数据库同步。
+/// 存储设备级别设置，保存在本地 `~/.autotier/settings.json`，不随数据库同步。
 /// 这确保了云同步场景下多设备可以独立运作。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -563,7 +563,10 @@ impl Default for AppSettings {
 
 impl AppSettings {
     fn settings_path() -> Option<PathBuf> {
-        // settings.json 保留用于旧版本迁移和无数据库场景
+        Some(crate::config::get_app_config_dir().join("settings.json"))
+    }
+
+    fn legacy_settings_path() -> Option<PathBuf> {
         Some(
             crate::config::get_home_dir()
                 .join(".cc-switch")
@@ -654,23 +657,43 @@ impl AppSettings {
         let Some(path) = Self::settings_path() else {
             return Self::default();
         };
-        if let Ok(content) = fs::read_to_string(&path) {
-            match serde_json::from_str::<AppSettings>(&content) {
-                Ok(mut settings) => {
-                    settings.normalize_paths();
-                    settings
+
+        let mut from_legacy = false;
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => Some(content),
+            Err(_) => Self::legacy_settings_path().and_then(|legacy_path| {
+                let content = fs::read_to_string(legacy_path).ok()?;
+                from_legacy = true;
+                Some(content)
+            }),
+        };
+
+        let Some(content) = content else {
+            return Self::default();
+        };
+
+        match serde_json::from_str::<AppSettings>(&content) {
+            Ok(mut settings) => {
+                settings.normalize_paths();
+                if from_legacy {
+                    if let Err(error) = save_settings_file(&settings) {
+                        log::warn!(
+                            "旧版设置已读取，但迁移到 {} 失败: {}",
+                            path.display(),
+                            error
+                        );
+                    }
                 }
-                Err(err) => {
-                    log::warn!(
-                        "解析设置文件失败，将使用默认设置。路径: {}, 错误: {}",
-                        path.display(),
-                        err
-                    );
-                    Self::default()
-                }
+                settings
             }
-        } else {
-            Self::default()
+            Err(err) => {
+                log::warn!(
+                    "解析设置文件失败，将使用默认设置。路径: {}, 错误: {}",
+                    path.display(),
+                    err
+                );
+                Self::default()
+            }
         }
     }
 }
@@ -1208,6 +1231,13 @@ mod tests {
         .expect("visible apps");
 
         assert!(!visible.is_visible(&AppType::ClaudeDesktop));
+    }
+
+    #[test]
+    fn sync_defaults_use_autotier_root() {
+        assert_eq!(default_remote_root(), "autotier-sync");
+        assert_eq!(WebDavSyncSettings::default().remote_root, "autotier-sync");
+        assert_eq!(S3SyncSettings::default().remote_root, "autotier-sync");
     }
 
     #[test]
