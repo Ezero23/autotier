@@ -535,10 +535,10 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    #[ignore = "requires CC_SWITCH_WSL_TEST_DIR to point to a WSL2 UNC directory"]
+    #[ignore = "requires AUTOTIER_WSL_TEST_DIR to point to a WSL2 UNC directory"]
     fn atomic_write_replaces_existing_wsl_unc_file() {
         let root = PathBuf::from(
-            std::env::var_os("CC_SWITCH_WSL_TEST_DIR").expect("CC_SWITCH_WSL_TEST_DIR must be set"),
+            std::env::var_os("AUTOTIER_WSL_TEST_DIR").expect("AUTOTIER_WSL_TEST_DIR must be set"),
         );
         let home = get_home_dir();
         let temp = std::env::temp_dir();
