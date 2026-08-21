@@ -28,8 +28,7 @@ const CODEX_PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
 fn is_owned_codex_catalog_filename(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME)
-            | Some(LEGACY_CODEX_MODEL_CATALOG_FILENAME)
+        Some(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME) | Some(LEGACY_CODEX_MODEL_CATALOG_FILENAME)
     )
 }
 
@@ -1962,8 +1961,7 @@ fn set_codex_model_catalog_json_field(
                 .map(|path| is_owned_codex_catalog_filename(Path::new(path)))
                 .unwrap_or(true);
             if is_autotier_owned {
-                doc["model_catalog_json"] =
-                    toml_edit::value(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME);
+                doc["model_catalog_json"] = toml_edit::value(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME);
             }
         }
         None => {
@@ -2123,10 +2121,7 @@ pub(crate) fn read_codex_model_catalog_text(path: &Path) -> Result<String, AppEr
 /// legacy-owned catalog file (returns `None` if `model_catalog_json` is absent or points at
 /// a file we don't own). Relative paths are resolved under `base_dir`;
 /// absolute paths must still be inside `base_dir`.
-pub(crate) fn resolve_autotier_catalog_path(
-    config_text: &str,
-    base_dir: &Path,
-) -> Option<PathBuf> {
+pub(crate) fn resolve_autotier_catalog_path(config_text: &str, base_dir: &Path) -> Option<PathBuf> {
     if config_text.trim().is_empty() {
         return None;
     }
@@ -2568,9 +2563,7 @@ pub fn codex_config_has_official_proxy_route(config_text: &str) -> bool {
     let Ok(doc) = config_text.parse::<DocumentMut>() else {
         return false;
     };
-    let active_id = doc
-        .get("model_provider")
-        .and_then(|item| item.as_str());
+    let active_id = doc.get("model_provider").and_then(|item| item.as_str());
     if !is_owned_codex_official_provider_id(active_id) {
         return false;
     }
@@ -2589,9 +2582,7 @@ pub fn remove_codex_official_proxy_route(config_text: &str) -> Result<String, Ap
     let mut doc = config_text
         .parse::<DocumentMut>()
         .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
-    let active_id = doc
-        .get("model_provider")
-        .and_then(|item| item.as_str());
+    let active_id = doc.get("model_provider").and_then(|item| item.as_str());
     if !is_owned_codex_official_provider_id(active_id) {
         return Ok(config_text.to_string());
     }

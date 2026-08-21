@@ -873,8 +873,7 @@ fn migrate_provider_config_template_to_custom(
         .filter(|provider_id| !provider_id.is_empty())
         .map(str::to_string);
 
-    let custom_table_exists =
-        config_defines_model_provider(&doc, AUTOTIER_CODEX_MODEL_PROVIDER_ID);
+    let custom_table_exists = config_defines_model_provider(&doc, AUTOTIER_CODEX_MODEL_PROVIDER_ID);
     let source_provider_id_to_move = active_provider_id
         .as_deref()
         .filter(|provider_id| source_provider_ids.contains(*provider_id))
