@@ -223,7 +223,7 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 
 ## 功能特性
 
-[完整更新日志](CHANGELOG.md) | [发布说明](docs/release-notes/v3.16.1-zh.md)
+[完整更新日志](CHANGELOG.md) | [更新日志](CHANGELOG.md)
 
 ### 供应商管理
 

@@ -125,5 +125,5 @@ API エンドポイントを確認してください。ゲートウェイのル�
 
 - [CC Switch ユーザーマニュアル: プロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
 - [CC Switch ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
-- [CC Switch v3.17.0 リリースノート](../release-notes/v3.17.0-ja.md)
+- [AutoTier 更新履歴](../../CHANGELOG.md)
 - この機能はコミュニティからの貢献 [#5071](https://github.com/farion1231/cc-switch/pull/5071) によるものです。@yeeyzy に感謝します。

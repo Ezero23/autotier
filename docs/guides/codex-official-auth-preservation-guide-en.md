@@ -207,4 +207,4 @@ Because Codex App Enhancements and routing takeover can create unnecessary troub
 - [Add a Codex provider: Chat Completions routing and model mapping](../user-manual/en/2-providers/2.1-add.md)
 - [Local Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
 - [Local Routing](../user-manual/en/4-proxy/4.2-routing.md)
-- [CC Switch v3.16.1 Release Note](../release-notes/v3.16.1-en.md)
+- [AutoTier changelog](../../CHANGELOG.md)

@@ -476,7 +476,7 @@ Development since v3.16.4 reworks the Codex native-Responses path — restoring 
 
 - **Documented the `CC_SWITCH_GDK_BACKEND` Escape Hatch in README and User Manual**: Added an FAQ entry for the opt-in `CC_SWITCH_GDK_BACKEND` environment variable (see the corresponding Fixed entry) across all four README locales (`README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md`) and the zh/en/ja user-manual troubleshooting pages (`docs/user-manual/{zh,en,ja}/5-faq/5.2-questions.md`), explaining how Wayland + NVIDIA users can switch back to native Wayland when the webview goes click-dead and black-screens on resize, and how tiling-Wayland users can set it to `x11` for the inverse input bug.
 - **Overseas Kimi READMEs Point to platform.kimi.ai With a Coding Plan Link**: Updated the Kimi K2.7 Code partner section across the English, German, and Japanese READMEs so the banner image and both inline CTAs point to `https://platform.kimi.ai?aff=cc-switch` instead of the old `platform.kimi.com` host, keeping the `aff=cc-switch` referral tag intact. All four localized READMEs (`README.md`, `README_DE.md`, `README_JA.md`, `README_ZH.md`) also gained a new line promoting the Kimi For Coding subscription plan linked to `https://www.kimi.com/code/?aff=cc-switch`; note the ZH README kept its existing `platform.kimi.com` link and only received the Coding Plan addition.
-- **GitHub Global Top-100 Milestone Banner in v3.16.4 Release Notes**: Prepended a celebratory callout blockquote to all three localized v3.16.4 release notes (`docs/release-notes/v3.16.4-en.md`, `-ja.md`, `-zh.md`) announcing that CC Switch has entered the global top 100 GitHub projects by star count, thanking users, contributors, and stargazers. This is a docs-only addition to the release-notes header and does not change any product behavior.
+- **GitHub Global Top-100 Milestone Banner in v3.16.4 Release Notes**: Prepended a celebratory callout blockquote to all three localized v3.16.4 release notes (historical localized release-note files removed during the AutoTier documentation cleanup) announcing that CC Switch has entered the global top 100 GitHub projects by star count, thanking users, contributors, and stargazers. This is a docs-only addition to the release-notes header and does not change any product behavior.
 
 ## [3.16.4] - 2026-06-27
 
@@ -2001,7 +2001,7 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 
 ### Stats
 
-- 51 commits since v3.7.1; 207 files changed; +17,297 / -6,870 lines. See [release-note-v3.8.0](docs/release-notes/v3.8.0-en.md) for details.
+- 51 commits since v3.7.1; 207 files changed; +17,297 / -6,870 lines. See the historical v3.8.0 changelog entry for details.
 
 ---
 

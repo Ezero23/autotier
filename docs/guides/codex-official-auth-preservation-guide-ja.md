@@ -207,4 +207,4 @@ Codex アプリ拡張やルーティング管理は、必要ないユーザー�
 - [Codex プロバイダーの追加: Chat Completions ルーティングとモデルマッピング](../user-manual/ja/2-providers/2.1-add.md)
 - [ローカルプロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
 - [ローカルルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
-- [CC Switch v3.16.1 Release Note](../release-notes/v3.16.1-ja.md)
+- [AutoTier 更新履歴](../../CHANGELOG.md)
