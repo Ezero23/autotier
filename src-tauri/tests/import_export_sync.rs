@@ -1202,20 +1202,20 @@ fn export_sql_returns_error_for_invalid_path() {
 }
 
 #[test]
-fn import_sql_rejects_non_cc_switch_backup() {
+fn import_sql_rejects_non_autotier_backup() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let home = ensure_test_home();
 
     let state = create_test_state().expect("create test state");
 
-    let import_path = home.join("not-cc-switch.sql");
+    let import_path = home.join("not-autotier.sql");
     fs::write(&import_path, "CREATE TABLE x (id INTEGER);").expect("write import sql");
 
     let err = state
         .db
         .import_sql(&import_path)
-        .expect_err("non-cc-switch sql should be rejected");
+        .expect_err("non-AutoTier sql should be rejected");
 
     match err {
         AppError::Localized { key, .. } => {
@@ -1226,7 +1226,7 @@ fn import_sql_rejects_non_cc_switch_backup() {
 }
 
 #[test]
-fn import_sql_accepts_cc_switch_exported_backup() {
+fn import_sql_accepts_autotier_exported_backup() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let home = ensure_test_home();
@@ -1250,7 +1250,7 @@ fn import_sql_accepts_cc_switch_exported_backup() {
     }
 
     let state = create_test_state_with_config(&config).expect("create test state");
-    let export_path = home.join("cc-switch-export.sql");
+    let export_path = home.join("autotier-export.sql");
     state
         .db
         .export_sql(&export_path)
