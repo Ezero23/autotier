@@ -13,14 +13,14 @@ use crate::error::AppError;
 /// - `dirs::home_dir()` 在 Windows 上使用 `SHGetKnownFolderPath(FOLDERID_Profile)`，
 ///   返回的是真实用户目录（类似 `C:\\Users\\Alice`），与 v3.10.2 行为一致。
 /// - 不要直接使用 `HOME` 环境变量：它可能由 Git/Cygwin/MSYS 等第三方工具注入，
-///   且不一定等于用户目录，可能导致 `.cc-switch/cc-switch.db` 路径变化，从而“看起来像数据丢失”。
+///   且不一定等于用户目录，可能导致 `~/.autotier/autotier.db` 路径变化，从而“看起来像数据丢失”。
 ///
 /// ## 测试隔离
 ///
-/// 为了让 Windows CI/本地测试能稳定隔离真实用户数据，可通过 `CC_SWITCH_TEST_HOME`
+/// 为了让 Windows CI/本地测试能稳定隔离真实用户数据，可通过 `AUTOTIER_TEST_HOME`
 /// 显式覆盖 home dir（仅用于测试/调试场景）。
 pub fn get_home_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("CC_SWITCH_TEST_HOME") {
+    if let Ok(home) = std::env::var("AUTOTIER_TEST_HOME") {
         let trimmed = home.trim();
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);
@@ -96,7 +96,7 @@ fn path_eq_lexical(left: &Path, right: &Path) -> bool {
 /// this works for non-existent paths. It is **not** a symlink defense: a
 /// symlink inside `base` can still lead a resolved path outside it. Callers
 /// that go on to open the file must canonicalize the existing path and
-/// re-verify containment (see `resolve_cc_switch_catalog_path`).
+/// re-verify containment (see `resolve_autotier_catalog_path`).
 /// On Windows the comparison is case-insensitive.
 pub(crate) fn path_is_within(base: &Path, path: &Path) -> bool {
     let base_key = comparable_path_key(base);

@@ -1172,7 +1172,7 @@ fn export_sql_returns_error_for_invalid_path() {
 
     // Try to export to an invalid path (nonexistent parent or invalid name on Windows)
     let invalid_parent = if cfg!(windows) {
-        std::env::temp_dir().join("cc-switch-test-invalid<>dir")
+        std::env::temp_dir().join("autotier-test-invalid<>dir")
     } else {
         PathBuf::from("/nonexistent/directory")
     };

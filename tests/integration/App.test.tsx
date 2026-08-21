@@ -204,6 +204,8 @@ describe("App integration with MSW", () => {
     toastErrorMock.mockReset();
     skillsPanelMocks.checkUpdates.mockReset();
     skillsPanelMocks.openDiscovery.mockReset();
+    localStorage.removeItem("autotier-last-view");
+    localStorage.removeItem("autotier-last-app");
     localStorage.removeItem("cc-switch-last-view");
     localStorage.removeItem("cc-switch-last-app");
   });

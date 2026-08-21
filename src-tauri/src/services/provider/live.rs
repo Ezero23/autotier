@@ -1078,7 +1078,7 @@ fn restore_live_settings_for_provider_backfill(
         }
     }
 
-    // `modelCatalog` is a cc-switch–private field whose SSOT is the DB. Live's
+    // `modelCatalog` is an AutoTier-private field whose SSOT is the DB. Live's
     // `config.toml` only carries a lossy projection (`model_catalog_json` →
     // generated catalog file) that proxy takeover/restore cycles and Codex.app
     // config rewrites can drop, so `read_live_settings` may reconstruct it as
@@ -1567,8 +1567,8 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
     match app_type {
         AppType::Codex => {
             let mut result = crate::codex_config::read_codex_live_settings()?;
-            // `modelCatalog` is a cc-switch private field that lives only in
-            // the DB SSOT plus the `cc-switch-model-catalog.json` projection
+            // `modelCatalog` is an AutoTier private field that lives only in
+            // the DB SSOT plus the `autotier-model-catalog.json` projection
             // file — it is never inlined into `auth.json` or `config.toml`.
             // Reverse-parse the projection so the edit form for the active
             // Codex provider doesn't see an empty mapping table.

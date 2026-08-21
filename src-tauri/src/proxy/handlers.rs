@@ -77,18 +77,18 @@ pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxySta
 /// GET /v1/models — Codex model list (reachability check)
 ///
 /// Codex CLI probes this endpoint at startup and deserializes the response as a
-/// catalog with a top-level `models` field.  Return the cc-switch–managed model
+/// catalog with a top-level `models` field. Return the AutoTier-managed model
 /// catalog file directly so the format always matches what the current version
 /// of Codex expects.
 ///
 /// Only serves the catalog when the live config.toml still references the
-/// cc-switch–owned `model_catalog_json`, using the same path ownership rules as
+/// AutoTier-owned `model_catalog_json`, using the same path ownership rules as
 /// Codex live-setting import.
 pub async fn handle_models() -> Result<Json<Value>, ProxyError> {
     let config_dir = crate::codex_config::get_codex_config_dir();
     let active_catalog_path = match crate::codex_config::read_codex_config_text() {
         Ok(config_text) => {
-            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &config_dir)
+            crate::codex_config::resolve_autotier_catalog_path(&config_text, &config_dir)
         }
         Err(_) => None,
     };
@@ -106,7 +106,7 @@ pub async fn handle_models() -> Result<Json<Value>, ProxyError> {
     } else {
         if active_catalog_path.is_none() {
             log::debug!(
-                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
+                "[models] stale guard: catalog not served (model_catalog_json not set to an AutoTier catalog)"
             );
         }
         json!({"models": []})
@@ -2133,26 +2133,26 @@ fn codex_proxy_error_json(
 
 fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
     match error {
-        ProxyError::ForwardFailed(_) => "cc_switch_forward_failed",
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "cc_switch_timeout",
-        ProxyError::NoAvailableProvider => "cc_switch_no_available_provider",
-        ProxyError::AllProvidersCircuitOpen => "cc_switch_all_providers_circuit_open",
-        ProxyError::NoProvidersConfigured => "cc_switch_no_providers_configured",
-        ProxyError::MaxRetriesExceeded => "cc_switch_max_retries_exceeded",
-        ProxyError::ProviderUnhealthy(_) => "cc_switch_provider_unhealthy",
-        ProxyError::ConfigError(_) => "cc_switch_config_error",
-        ProxyError::TransformError(_) => "cc_switch_transform_error",
-        ProxyError::InvalidRequest(_) => "cc_switch_invalid_request",
-        ProxyError::AuthError(_) => "cc_switch_auth_error",
-        ProxyError::UpstreamError { .. } => "cc_switch_upstream_error",
-        ProxyError::DatabaseError(_) => "cc_switch_database_error",
-        ProxyError::Internal(_) => "cc_switch_internal_error",
+        ProxyError::ForwardFailed(_) => "autotier_forward_failed",
+        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "autotier_timeout",
+        ProxyError::NoAvailableProvider => "autotier_no_available_provider",
+        ProxyError::AllProvidersCircuitOpen => "autotier_all_providers_circuit_open",
+        ProxyError::NoProvidersConfigured => "autotier_no_providers_configured",
+        ProxyError::MaxRetriesExceeded => "autotier_max_retries_exceeded",
+        ProxyError::ProviderUnhealthy(_) => "autotier_provider_unhealthy",
+        ProxyError::ConfigError(_) => "autotier_config_error",
+        ProxyError::TransformError(_) => "autotier_transform_error",
+        ProxyError::InvalidRequest(_) => "autotier_invalid_request",
+        ProxyError::AuthError(_) => "autotier_auth_error",
+        ProxyError::UpstreamError { .. } => "autotier_upstream_error",
+        ProxyError::DatabaseError(_) => "autotier_database_error",
+        ProxyError::Internal(_) => "autotier_internal_error",
         ProxyError::AlreadyRunning
         | ProxyError::NotRunning
         | ProxyError::BindFailed(_)
         | ProxyError::StopTimeout
         | ProxyError::StopFailed(_)
-        | ProxyError::ResponseBodyTooLarge(_) => "cc_switch_proxy_error",
+        | ProxyError::ResponseBodyTooLarge(_) => "autotier_proxy_error",
     }
 }
 
@@ -3666,7 +3666,7 @@ data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n
         assert!(message.contains("deepseek-chat"));
         assert!(message.contains("/responses"));
         assert!(message.contains("dns lookup failed"));
-        assert_eq!(body["error"]["code"], "cc_switch_forward_failed");
+        assert_eq!(body["error"]["code"], "autotier_forward_failed");
         assert_eq!(body["error"]["provider"], "DeepSeek");
         assert_eq!(body["error"]["model"], "deepseek-chat");
     }

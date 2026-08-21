@@ -1034,11 +1034,11 @@ mod tests {
             let dir = TempDir::new().expect("failed to create temp home");
             let original_home = env::var("HOME").ok();
             let original_userprofile = env::var("USERPROFILE").ok();
-            let original_test_home = env::var("CC_SWITCH_TEST_HOME").ok();
+            let original_test_home = env::var("AUTOTIER_TEST_HOME").ok();
 
             env::set_var("HOME", dir.path());
             env::set_var("USERPROFILE", dir.path());
-            env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            env::set_var("AUTOTIER_TEST_HOME", dir.path());
 
             Self {
                 dir,
@@ -1062,8 +1062,8 @@ mod tests {
             }
 
             match &self.original_test_home {
-                Some(value) => env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => env::set_var("AUTOTIER_TEST_HOME", value),
+                None => env::remove_var("AUTOTIER_TEST_HOME"),
             }
         }
     }

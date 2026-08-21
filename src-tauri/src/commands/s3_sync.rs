@@ -334,7 +334,7 @@ mod tests {
         let test_home = std::env::temp_dir().join("cc-switch-s3-sync-error-status-test");
         let _ = std::fs::remove_dir_all(&test_home);
         std::fs::create_dir_all(&test_home).expect("create test home");
-        std::env::set_var("CC_SWITCH_TEST_HOME", &test_home);
+        std::env::set_var("AUTOTIER_TEST_HOME", &test_home);
 
         crate::settings::update_settings(AppSettings::default()).expect("reset settings");
         let mut current = S3SyncSettings {
@@ -380,7 +380,7 @@ mod tests {
         let test_home = std::env::temp_dir().join("cc-switch-s3-sync-enabled-disabled-test");
         let _ = std::fs::remove_dir_all(&test_home);
         std::fs::create_dir_all(&test_home).expect("create test home");
-        std::env::set_var("CC_SWITCH_TEST_HOME", &test_home);
+        std::env::set_var("AUTOTIER_TEST_HOME", &test_home);
 
         crate::settings::update_settings(AppSettings::default()).expect("reset settings");
         crate::settings::set_s3_sync_settings(Some(S3SyncSettings {
@@ -406,7 +406,7 @@ mod tests {
         let test_home = std::env::temp_dir().join("cc-switch-s3-sync-enabled-ok-test");
         let _ = std::fs::remove_dir_all(&test_home);
         std::fs::create_dir_all(&test_home).expect("create test home");
-        std::env::set_var("CC_SWITCH_TEST_HOME", &test_home);
+        std::env::set_var("AUTOTIER_TEST_HOME", &test_home);
 
         crate::settings::update_settings(AppSettings::default()).expect("reset settings");
         crate::settings::set_s3_sync_settings(Some(S3SyncSettings {

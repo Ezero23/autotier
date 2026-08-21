@@ -214,7 +214,7 @@ pub fn should_convert_codex_responses_to_anthropic(provider: &Provider, endpoint
 /// `422 unknown variant "namespace"`. Only providers whose upstream is such a
 /// strict native gateway need the flatten+restore pass; the Chat/Anthropic
 /// transform paths already unwrap namespaces on their own. Currently that is the
-/// managed xAI (Grok) OAuth provider — the first strict gateway cc-switch hit.
+/// managed xAI (Grok) OAuth provider — the first strict gateway AutoTier encountered.
 pub fn provider_needs_responses_namespace_flatten(provider: &Provider) -> bool {
     provider.is_xai_oauth()
 }
