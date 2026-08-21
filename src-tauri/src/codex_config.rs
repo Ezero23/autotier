@@ -4963,7 +4963,7 @@ web_search = "disabled"
         let config = r#"model_catalog_json = "/tmp/.codex/cc-switch-model-catalog.json"
 "#;
         let resolved = resolve_autotier_catalog_path(config, &base).expect("path resolves");
-        assert_eq!(resolved, base.join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME));
+        assert_eq!(resolved, base.join(LEGACY_CODEX_MODEL_CATALOG_FILENAME));
     }
 
     #[test]
@@ -5357,7 +5357,7 @@ model_catalog_json = "my-custom-catalog.json"
     #[test]
     fn resolve_catalog_finds_relative_filename() {
         let config_text = r#"model_provider = "custom"
-model_catalog_json = "cc-switch-model-catalog.json"
+model_catalog_json = "autotier-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
         let result = resolve_autotier_catalog_path(config_text, &base_dir);
@@ -5382,7 +5382,7 @@ model_catalog_json = "cc-switch-model-catalog.json"
 
     #[test]
     fn resolve_catalog_accepts_absolute_path_inside_config_dir() {
-        let config_text = r#"model_catalog_json = "/home/user/.codex/cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "/home/user/.codex/autotier-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
         let result = resolve_autotier_catalog_path(config_text, &base_dir);
@@ -5395,7 +5395,7 @@ model_catalog_json = "cc-switch-model-catalog.json"
 
     #[test]
     fn resolve_catalog_rejects_traversal_to_parent_directory() {
-        let config_text = r#"model_catalog_json = "../cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "../autotier-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
         let result = resolve_autotier_catalog_path(config_text, &base_dir);
@@ -5408,7 +5408,7 @@ model_catalog_json = "cc-switch-model-catalog.json"
     #[test]
     fn resolve_catalog_rejects_symlink_escaping_config_dir() {
         // 词法包含可被符号链接绕过：~/.codex/link -> 外部目录，
-        // "link/cc-switch-model-catalog.json" 词法上在 base 内，真实读取却落到
+        // "link/autotier-model-catalog.json" 词法上在 base 内，真实读取却落到
         // base 外。canonicalize 之后的二次校验必须拒绝。
         let temp = tempfile::tempdir().expect("tempdir");
         let base_dir = temp.path().join("codex");
@@ -5423,7 +5423,7 @@ model_catalog_json = "cc-switch-model-catalog.json"
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&outside_dir, base_dir.join("link")).expect("symlink");
 
-        let config_text = r#"model_catalog_json = "link/cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "link/autotier-model-catalog.json"
 "#;
         let result = resolve_autotier_catalog_path(config_text, &base_dir);
         assert_eq!(
@@ -5441,7 +5441,7 @@ model_catalog_json = "cc-switch-model-catalog.json"
         let catalog_file = base_dir.join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME);
         fs::write(&catalog_file, r#"{"models":[]}"#).expect("write catalog");
 
-        let config_text = r#"model_catalog_json = "cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "autotier-model-catalog.json"
 "#;
         let result = resolve_autotier_catalog_path(config_text, &base_dir);
         let resolved = result.expect("real file inside config dir should be accepted");
