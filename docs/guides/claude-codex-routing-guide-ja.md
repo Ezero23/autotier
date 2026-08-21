@@ -137,5 +137,5 @@ CC Switch 3.17.0 以降にアップグレードしてください。古いバー
 - [CC Switch ユーザーマニュアル: プロバイダーを追加（Codex OAuth リバースプロキシと API フォーマットを含む）](../user-manual/ja/2-providers/2.1-add.md)
 - [CC Switch ユーザーマニュアル: プロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
 - [CC Switch ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
-- [CC Switch v3.17.0 リリースノート](../release-notes/v3.17.0-ja.md)
+- [AutoTier 更新履歴](../../CHANGELOG.md)
 - 逆方向のガイド: [Codex で Claude モデルを使う](./codex-claude-routing-guide-ja.md)
