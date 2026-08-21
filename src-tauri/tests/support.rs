@@ -54,7 +54,7 @@ pub fn reset_test_fs() {
     // 普通 integration-test binary 之间无法共享进程内 Mutex；每次 reset 换一个目录，
     // 这样旧的 SQLite/Writer 句柄即使尚未退出，也不会阻塞下一组测试。
     // WSL2 契约必须保持 workflow 注入的 UNC home/temp，因此不轮换该目录。
-    let home = if std::env::var_os("CC_SWITCH_WSL_TEST_DIR").is_some() {
+    let home = if std::env::var_os("AUTOTIER_WSL_TEST_DIR").is_some() {
         ensure_test_home()
     } else {
         let home = install_home(new_process_test_home());
