@@ -478,16 +478,16 @@ mod tests {
 
     fn with_test_home(test: impl FnOnce(&Database, &PathBuf)) {
         let temp = tempfile::tempdir().expect("tempdir");
-        let previous = std::env::var_os("CC_SWITCH_TEST_HOME");
-        std::env::set_var("CC_SWITCH_TEST_HOME", temp.path());
+        let previous = std::env::var_os("AUTOTIER_TEST_HOME");
+        std::env::set_var("AUTOTIER_TEST_HOME", temp.path());
 
         let db = Database::memory().expect("memory database");
         let path = model_pricing_file_path();
         test(&db, &path);
 
         match previous {
-            Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
-            None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            Some(value) => std::env::set_var("AUTOTIER_TEST_HOME", value),
+            None => std::env::remove_var("AUTOTIER_TEST_HOME"),
         }
     }
 

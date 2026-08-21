@@ -138,16 +138,20 @@ interface SyncStatusUpdatedPayload {
 const DEFAULT_DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px
 const HEADER_HEIGHT = 64; // px
 
-const STORAGE_KEY = "cc-switch-last-app";
+const STORAGE_KEY = "autotier-last-app";
+const LEGACY_APP_STORAGE_KEY = "cc-switch-last-app";
 const getInitialApp = (): AppId => {
-  const saved = localStorage.getItem(STORAGE_KEY) as AppId | null;
+  const saved = (localStorage.getItem(STORAGE_KEY) ??
+    localStorage.getItem(LEGACY_APP_STORAGE_KEY)) as AppId | null;
   if (saved && APP_IDS.includes(saved)) {
+    localStorage.setItem(STORAGE_KEY, saved);
     return saved;
   }
   return "claude";
 };
 
-const VIEW_STORAGE_KEY = "cc-switch-last-view";
+const VIEW_STORAGE_KEY = "autotier-last-view";
+const LEGACY_VIEW_STORAGE_KEY = "cc-switch-last-view";
 const VALID_VIEWS: View[] = [
   "providers",
   "settings",
@@ -166,8 +170,10 @@ const VALID_VIEWS: View[] = [
 ];
 
 const getInitialView = (): View => {
-  const saved = localStorage.getItem(VIEW_STORAGE_KEY) as View | null;
+  const saved = (localStorage.getItem(VIEW_STORAGE_KEY) ??
+    localStorage.getItem(LEGACY_VIEW_STORAGE_KEY)) as View | null;
   if (saved && VALID_VIEWS.includes(saved)) {
+    localStorage.setItem(VIEW_STORAGE_KEY, saved);
     return saved;
   }
   return "providers";

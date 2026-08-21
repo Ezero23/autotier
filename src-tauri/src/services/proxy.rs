@@ -365,7 +365,7 @@ impl CodexAuthFileTransaction {
             .and_then(|name| name.to_str())
             .unwrap_or("auth.json");
         Ok(parent.join(format!(
-            ".{file_name}.cc-switch-{label}-{}",
+            ".{file_name}.autotier-{label}-{}",
             uuid::Uuid::new_v4()
         )))
     }
@@ -4018,11 +4018,11 @@ mod tests {
             let dir = TempDir::new().expect("failed to create temp home");
             let original_home = env::var("HOME").ok();
             let original_userprofile = env::var("USERPROFILE").ok();
-            let original_test_home = env::var("CC_SWITCH_TEST_HOME").ok();
+            let original_test_home = env::var("AUTOTIER_TEST_HOME").ok();
 
             env::set_var("HOME", dir.path());
             env::set_var("USERPROFILE", dir.path());
-            env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            env::set_var("AUTOTIER_TEST_HOME", dir.path());
 
             Self {
                 dir,
@@ -4046,8 +4046,8 @@ mod tests {
             }
 
             match &self.original_test_home {
-                Some(value) => env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => env::set_var("AUTOTIER_TEST_HOME", value),
+                None => env::remove_var("AUTOTIER_TEST_HOME"),
             }
         }
     }
@@ -6490,7 +6490,7 @@ wire_api = "chat"
         )
         .expect("apply official proxy config");
         let parsed: toml::Value = toml::from_str(&output).expect("valid official route");
-        let route_id = crate::codex_config::CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID;
+        let route_id = crate::codex_config::AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID;
         let route = &parsed["model_providers"][route_id];
 
         assert_eq!(parsed["model_provider"].as_str(), Some(route_id));
@@ -8357,7 +8357,7 @@ requires_openai_auth = true
         let catalog_path = crate::codex_config::get_codex_model_catalog_path();
         assert!(
             catalog_path.exists(),
-            "cc-switch-model-catalog.json must be created on provider switch"
+            "autotier-model-catalog.json must be created on provider switch"
         );
         let catalog_text = std::fs::read_to_string(&catalog_path).expect("read catalog json");
         let catalog: serde_json::Value =
@@ -8501,7 +8501,7 @@ requires_openai_auth = true
             message.contains("写入 Codex 配置失败")
                 || message.contains("原子替换失败")
                 || (message.contains("捕获 Codex 热切换前状态失败")
-                    && message.contains("cc-switch-model-catalog.json")),
+                    && message.contains("autotier-model-catalog.json")),
             "switch should surface catalog write failure, got: {message}"
         );
     }
@@ -8733,7 +8733,7 @@ requires_openai_auth = true
         let db = Arc::new(Database::memory().expect("init db"));
         let service = ProxyService::new(db.clone());
 
-        // Pre-takeover Live state: config.toml points at the cc-switch generated
+        // Pre-takeover Live state: config.toml points at the AutoTier-generated
         // catalog file, and that file exists on disk (takeover never touches it).
         let catalog_path = crate::codex_config::get_codex_model_catalog_path();
         if let Some(parent) = catalog_path.parent() {
@@ -8778,7 +8778,7 @@ requires_openai_auth = true
         );
         assert!(
             restored.contains(pointer.as_str()),
-            "restored pointer must still reference the cc-switch generated catalog file"
+            "restored pointer must still reference the AutoTier-generated catalog file"
         );
     }
 
@@ -8841,7 +8841,7 @@ requires_openai_auth = true
         );
         assert!(
             catalog_path.exists(),
-            "restore must generate the cc-switch catalog file on disk"
+            "restore must generate the AutoTier catalog file on disk"
         );
         let catalog: Value = serde_json::from_str(
             &std::fs::read_to_string(&catalog_path).expect("read generated catalog"),
@@ -8910,7 +8910,7 @@ requires_openai_auth = true
         );
         assert!(
             crate::codex_config::get_codex_model_catalog_path().exists(),
-            "empty-auth restore must generate the cc-switch catalog file"
+            "empty-auth restore must generate the AutoTier catalog file"
         );
         assert!(
             !crate::codex_config::get_codex_auth_path().exists(),

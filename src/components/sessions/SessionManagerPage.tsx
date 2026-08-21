@@ -78,8 +78,12 @@ import {
 } from "./utils";
 
 const SESSION_LIST_VIEW_MODE_STORAGE_KEY =
+  "autotier.sessionManager.listViewMode";
+const LEGACY_SESSION_LIST_VIEW_MODE_STORAGE_KEY =
   "cc-switch.sessionManager.listViewMode";
 const SESSION_GROUP_EXPANSION_STORAGE_KEY =
+  "autotier.sessionManager.groupExpansionState";
+const LEGACY_SESSION_GROUP_EXPANSION_STORAGE_KEY =
   "cc-switch.sessionManager.groupExpansionState";
 
 type ProviderFilter =
@@ -109,9 +113,9 @@ type SessionGroupExpansionState = {
 
 const readInitialSessionListViewMode = (): SessionListViewMode => {
   if (typeof window === "undefined") return "flat";
-  const stored = window.localStorage.getItem(
-    SESSION_LIST_VIEW_MODE_STORAGE_KEY,
-  );
+  const stored =
+    window.localStorage.getItem(SESSION_LIST_VIEW_MODE_STORAGE_KEY) ??
+    window.localStorage.getItem(LEGACY_SESSION_LIST_VIEW_MODE_STORAGE_KEY);
   return stored === "grouped" || stored === "flat" ? stored : "flat";
 };
 
@@ -125,9 +129,9 @@ const readInitialSessionGroupExpansionState =
     }
 
     try {
-      const stored = window.localStorage.getItem(
-        SESSION_GROUP_EXPANSION_STORAGE_KEY,
-      );
+      const stored =
+        window.localStorage.getItem(SESSION_GROUP_EXPANSION_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_SESSION_GROUP_EXPANSION_STORAGE_KEY);
       const parsed = stored ? JSON.parse(stored) : null;
 
       if (!parsed || typeof parsed !== "object") {

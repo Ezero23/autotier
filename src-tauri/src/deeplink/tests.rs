@@ -23,11 +23,11 @@ impl TestHomeGuard {
         let dir = tempfile::tempdir().expect("create isolated test home");
         let original_home = env::var_os("HOME");
         let original_userprofile = env::var_os("USERPROFILE");
-        let original_test_home = env::var_os("CC_SWITCH_TEST_HOME");
+        let original_test_home = env::var_os("AUTOTIER_TEST_HOME");
 
         env::set_var("HOME", dir.path());
         env::set_var("USERPROFILE", dir.path());
-        env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+        env::set_var("AUTOTIER_TEST_HOME", dir.path());
 
         Self {
             _dir: dir,
@@ -41,8 +41,8 @@ impl TestHomeGuard {
 impl Drop for TestHomeGuard {
     fn drop(&mut self) {
         match &self.original_test_home {
-            Some(value) => env::set_var("CC_SWITCH_TEST_HOME", value),
-            None => env::remove_var("CC_SWITCH_TEST_HOME"),
+            Some(value) => env::set_var("AUTOTIER_TEST_HOME", value),
+            None => env::remove_var("AUTOTIER_TEST_HOME"),
         }
         match &self.original_userprofile {
             Some(value) => env::set_var("USERPROFILE", value),

@@ -634,7 +634,7 @@ mod tests {
     #[serial_test::serial]
     fn load_or_create_secret_is_stable_in_scope() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let first = load_or_create_session_secret().unwrap();
         let second = load_or_create_session_secret().unwrap();
         assert_eq!(first, second);
@@ -745,7 +745,7 @@ mod tests {
     #[serial_test::serial]
     async fn usage_finalize_sets_complete_without_looking_up_logs() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
         let row = sample_row("d-usage", &SCOPE_A);
         assert!(enqueue_create(db.clone(), row));
@@ -773,7 +773,7 @@ mod tests {
     #[serial_test::serial]
     fn usage_finalize_skips_ineligible_empty_usage() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
         assert!(!enqueue_usage_finalize(
             db,
@@ -792,7 +792,7 @@ mod tests {
     #[serial_test::serial]
     async fn finalize_fills_baseline_and_actual_outbound() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
         let writer = DecisionWriter::spawn(db.clone(), DECISION_QUEUE_CAP);
         let row = sample_row("d-out", &SCOPE_A);
@@ -827,7 +827,7 @@ mod tests {
     #[serial_test::serial]
     async fn usage_unknown_ttl_does_not_fill_5m_or_1h() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
         let row = sample_row("d-ttl-unknown", &SCOPE_A);
         assert!(enqueue_create(db.clone(), row));
@@ -859,7 +859,7 @@ mod tests {
     #[serial_test::serial]
     async fn usage_5m_and_1h_ttl_are_attributed_separately() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
 
         let body_5m = json!({
@@ -922,7 +922,7 @@ mod tests {
     #[serial_test::serial]
     async fn historical_price_update_does_not_rewrite_decision_cost() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
         let row = sample_row("d-freeze", &SCOPE_A);
         assert!(enqueue_create(db.clone(), row));
@@ -976,7 +976,7 @@ mod tests {
     #[serial_test::serial]
     async fn missing_price_leaves_actual_cost_unset() {
         let tmp = tempfile::tempdir().unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", tmp.path());
+        std::env::set_var("AUTOTIER_TEST_HOME", tmp.path());
         let db = Arc::new(Database::init().expect("init db"));
         let body = json!({
             "model": "no-such-autotier-model-xyz",

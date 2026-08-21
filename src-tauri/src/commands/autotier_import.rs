@@ -105,7 +105,7 @@ mod tests {
     fn detect_legacy_reports_paths() {
         let home = std::env::temp_dir().join(format!("autotier-detect-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(home.join(LEGACY_DIR)).unwrap();
-        std::env::set_var("CC_SWITCH_TEST_HOME", &home);
+        std::env::set_var("AUTOTIER_TEST_HOME", &home);
         std::env::set_var("HOME", &home);
         let status = detect_legacy_data();
         assert!(status.legacy_dir.contains(".cc-switch"));
@@ -134,7 +134,7 @@ mod tests {
         )
         .unwrap();
 
-        std::env::set_var("CC_SWITCH_TEST_HOME", &home);
+        std::env::set_var("AUTOTIER_TEST_HOME", &home);
         std::env::set_var("HOME", &home);
         let before = std::fs::metadata(&legacy_db).unwrap().len();
         let result = import_legacy_copy_only().expect("import");

@@ -1194,11 +1194,11 @@ mod tests {
     impl TestHomeGuard {
         fn new() -> Self {
             let temp_dir = tempfile::tempdir().expect("create isolated test home");
-            let previous_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
-            std::env::set_var("CC_SWITCH_TEST_HOME", temp_dir.path());
+            let previous_test_home = std::env::var_os("AUTOTIER_TEST_HOME");
+            std::env::set_var("AUTOTIER_TEST_HOME", temp_dir.path());
             // Prevent the Windows legacy-HOME fallback without mutating HOME:
             // an existing default DB keeps get_app_config_dir() anchored under
-            // CC_SWITCH_TEST_HOME and makes import exercise its safety backup.
+            // AUTOTIER_TEST_HOME and makes import exercise its safety backup.
             let config_dir = temp_dir.path().join(".cc-switch");
             std::fs::create_dir_all(&config_dir).expect("create isolated config directory");
             std::fs::File::create(config_dir.join("cc-switch.db"))
@@ -1224,8 +1224,8 @@ mod tests {
     impl Drop for TestHomeGuard {
         fn drop(&mut self) {
             match self.previous_test_home.as_ref() {
-                Some(previous) => std::env::set_var("CC_SWITCH_TEST_HOME", previous),
-                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(previous) => std::env::set_var("AUTOTIER_TEST_HOME", previous),
+                None => std::env::remove_var("AUTOTIER_TEST_HOME"),
             }
         }
     }

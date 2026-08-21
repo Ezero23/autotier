@@ -17,8 +17,8 @@ fn install_home(base: PathBuf) -> &'static Path {
     }
     std::fs::create_dir_all(&base).expect("create test home");
     // Windows 上 `dirs::home_dir()` 不受 HOME/USERPROFILE 影响（走 Known Folder API），
-    // 用 CC_SWITCH_TEST_HOME 显式覆盖，以确保测试不会污染真实用户目录。
-    std::env::set_var("CC_SWITCH_TEST_HOME", &base);
+    // 用 AUTOTIER_TEST_HOME 显式覆盖，以确保测试不会污染真实用户目录。
+    std::env::set_var("AUTOTIER_TEST_HOME", &base);
     std::env::set_var("HOME", &base);
     #[cfg(windows)]
     std::env::set_var("USERPROFILE", &base);
@@ -29,7 +29,7 @@ fn new_process_test_home() -> PathBuf {
     static RESET_COUNT: AtomicUsize = AtomicUsize::new(0);
     let sequence = RESET_COUNT.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "cc-switch-test-home-{}-{}",
+        "autotier-test-home-{}-{}",
         std::process::id(),
         sequence
     ))
@@ -41,7 +41,7 @@ pub fn ensure_test_home() -> &'static Path {
     if let Some(home) = *slot {
         return home;
     }
-    let base = std::env::var_os("CC_SWITCH_TEST_HOME")
+    let base = std::env::var_os("AUTOTIER_TEST_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(new_process_test_home);
     let home = install_home(base);

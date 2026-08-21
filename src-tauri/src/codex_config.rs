@@ -14,14 +14,31 @@ use std::fs;
 use std::process::{Command, Stdio};
 use toml_edit::DocumentMut;
 
-pub const CC_SWITCH_CODEX_MODEL_PROVIDER_ID: &str = "custom";
+pub const AUTOTIER_CODEX_MODEL_PROVIDER_ID: &str = "custom";
 /// Temporary model-provider id used while the built-in `codex-official`
-/// provider is routed through CC Switch.  A dedicated id is an ownership
-/// marker: unlike a generic localhost `base_url`, it can be detected and
-/// cleaned up without mistaking a user's own local provider for takeover.
-pub const CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID: &str = "cc-switch-official";
-pub const CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME: &str = "cc-switch-model-catalog.json";
+/// provider is routed through AutoTier. A dedicated id is an ownership marker:
+/// unlike a generic localhost `base_url`, it can be detected and cleaned up
+/// without mistaking a user's own local provider for takeover.
+pub const AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID: &str = "autotier-official";
+pub const LEGACY_CODEX_OFFICIAL_PROXY_PROVIDER_ID: &str = "cc-switch-official";
+pub const AUTOTIER_CODEX_MODEL_CATALOG_FILENAME: &str = "autotier-model-catalog.json";
+pub const LEGACY_CODEX_MODEL_CATALOG_FILENAME: &str = "cc-switch-model-catalog.json";
 const CODEX_PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+fn is_owned_codex_catalog_filename(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME) | Some(LEGACY_CODEX_MODEL_CATALOG_FILENAME)
+    )
+}
+
+fn is_owned_codex_official_provider_id(id: Option<&str>) -> bool {
+    matches!(
+        id,
+        Some(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
+            | Some(LEGACY_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
+    )
+}
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -735,7 +752,7 @@ pub fn get_codex_config_path() -> PathBuf {
 }
 
 pub fn get_codex_model_catalog_path() -> PathBuf {
-    get_codex_config_dir().join(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)
+    get_codex_config_dir().join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME)
 }
 
 /// 获取 Codex 供应商配置文件路径
@@ -1935,31 +1952,23 @@ fn set_codex_model_catalog_json_field(
 
     match catalog_path {
         Some(_) => {
-            // Only claim the pointer when it is absent or already cc-switch-owned.
+            // Only claim the pointer when it is absent or already AutoTier-owned.
             // A user-managed external catalog file (custom filename or path) is
-            // left untouched, mirroring the None arm's ownership rule that
-            // `resolve_cc_switch_catalog_path` relies on.
-            let is_cc_switch_owned = doc
+            // left untouched.
+            let is_autotier_owned = doc
                 .get("model_catalog_json")
                 .and_then(|item| item.as_str())
-                .map(|path| {
-                    Path::new(path).file_name().and_then(|name| name.to_str())
-                        == Some(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)
-                })
+                .map(|path| is_owned_codex_catalog_filename(Path::new(path)))
                 .unwrap_or(true);
-            if is_cc_switch_owned {
-                doc["model_catalog_json"] =
-                    toml_edit::value(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME);
+            if is_autotier_owned {
+                doc["model_catalog_json"] = toml_edit::value(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME);
             }
         }
         None => {
             let should_remove = doc
                 .get("model_catalog_json")
                 .and_then(|item| item.as_str())
-                .map(|path| {
-                    Path::new(path).file_name().and_then(|name| name.to_str())
-                        == Some(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)
-                })
+                .map(|path| is_owned_codex_catalog_filename(Path::new(path)))
                 .unwrap_or(false);
             if should_remove {
                 doc.as_table_mut().remove("model_catalog_json");
@@ -2039,13 +2048,13 @@ pub fn prepare_codex_config_text_with_model_catalog(
 }
 
 /// Reverse of `prepare_codex_config_text_with_model_catalog`: read the
-/// cc-switch–maintained catalog file referenced by `~/.codex/config.toml` and
+/// AutoTier-maintained catalog file referenced by `~/.codex/config.toml` and
 /// convert it back into the simplified shape the frontend table uses:
 /// `{ "models": [{ "model", "displayName"?, "contextWindow"?, hidden overrides... }, ...] }`.
 ///
 /// We only reverse-parse catalogs whose `model_catalog_json` path is the
-/// cc-switch–generated file (identified by filename
-/// `cc-switch-model-catalog.json`). A user-managed external catalog file is
+/// AutoTier-generated or legacy file (identified by filename
+/// `autotier-model-catalog.json` or `cc-switch-model-catalog.json`). A user-managed external catalog file is
 /// left alone — surfacing its richer structure as the simplified table would
 /// be a downgrade we can't safely round-trip.
 ///
@@ -2068,7 +2077,7 @@ const MAX_CODEX_CATALOG_BYTES: u64 = 32 * 1024 * 1024;
 pub fn read_codex_model_catalog_simplified_from_live() -> Result<Option<Value>, AppError> {
     let config_text = read_codex_config_text()?;
     let config_dir = get_codex_config_dir();
-    let Some(catalog_path) = resolve_cc_switch_catalog_path(&config_text, &config_dir) else {
+    let Some(catalog_path) = resolve_autotier_catalog_path(&config_text, &config_dir) else {
         return Ok(None);
     };
     if !catalog_path.exists() {
@@ -2103,19 +2112,16 @@ pub(crate) fn read_limited_string(path: &Path, max_bytes: u64) -> Result<String,
     fs::read_to_string(path).map_err(|error| AppError::io(path, error))
 }
 
-/// Read the cc-switch Codex model catalog file with a size cap.
+/// Read an AutoTier or legacy Codex model catalog file with a size cap.
 pub(crate) fn read_codex_model_catalog_text(path: &Path) -> Result<String, AppError> {
     read_limited_string(path, MAX_CODEX_CATALOG_BYTES)
 }
 
-/// Given `config.toml` text, resolve the on-disk path of the cc-switch–owned
-/// catalog file (returns `None` if `model_catalog_json` is absent or points at
+/// Given `config.toml` text, resolve the on-disk path of an AutoTier- or
+/// legacy-owned catalog file (returns `None` if `model_catalog_json` is absent or points at
 /// a file we don't own). Relative paths are resolved under `base_dir`;
 /// absolute paths must still be inside `base_dir`.
-pub(crate) fn resolve_cc_switch_catalog_path(
-    config_text: &str,
-    base_dir: &Path,
-) -> Option<PathBuf> {
+pub(crate) fn resolve_autotier_catalog_path(config_text: &str, base_dir: &Path) -> Option<PathBuf> {
     if config_text.trim().is_empty() {
         return None;
     }
@@ -2127,9 +2133,7 @@ pub(crate) fn resolve_cc_switch_catalog_path(
         .filter(|s| !s.is_empty())?;
 
     let referenced_path = Path::new(catalog_path_str);
-    let is_cc_switch_owned = referenced_path.file_name().and_then(|name| name.to_str())
-        == Some(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME);
-    if !is_cc_switch_owned {
+    if !is_owned_codex_catalog_filename(referenced_path) {
         return None;
     }
 
@@ -2137,7 +2141,7 @@ pub(crate) fn resolve_cc_switch_catalog_path(
     // 被视为绝对路径，从而在下方的包含性校验中失败——此前这类路径会因无法匹配
     // 生成文件名而回退为按文件名解析、碰巧能工作。可接受：下一次切换供应商时
     // 写入侧会重新落一个裸文件名，配置自愈（见
-    // `set_catalog_json_none_removes_cc_switch_owned_by_filename` 的场景注释）。
+    // `set_catalog_json_none_removes_legacy_owned_by_filename` 的场景注释）。
     let is_unix_absolute = catalog_path_str.starts_with('/');
     let resolved = if referenced_path.is_absolute() || is_unix_absolute {
         referenced_path.to_path_buf()
@@ -2155,7 +2159,7 @@ pub(crate) fn resolve_cc_switch_catalog_path(
     }
 
     // 词法包含不等于运行时包含：配置目录内的符号链接（如 ~/.codex/link ->
-    // /etc）能让 `link/cc-switch-model-catalog.json` 通过上面的检查，读取却
+    // /etc）能让 `link/autotier-model-catalog.json` 通过上面的检查，读取却
     // 落到目录外。文件存在时把真实路径 canonicalize 出来再校验一次，并把
     // canonical 路径返回给调用方——后续读取不再经过 symlink 组件。
     if resolved.exists() {
@@ -2522,7 +2526,7 @@ pub fn apply_codex_official_proxy_route(
     // A third-party takeover may have left the proxy placeholder in config.toml.
     // The official route must use Codex's native OpenAI login instead.
     doc.as_table_mut().remove("experimental_bearer_token");
-    doc["model_provider"] = toml_edit::value(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
+    doc["model_provider"] = toml_edit::value(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
 
     let mut providers = match doc.as_table_mut().remove("model_providers") {
         Some(item) => item.into_table().map_err(|_| {
@@ -2537,47 +2541,49 @@ pub fn apply_codex_official_proxy_route(
         }
     };
 
-    // Clean only CC Switch's placeholder from every stale provider table. Real
+    // Clean only AutoTier's placeholder from every stale provider table. Real
     // user bearer tokens are preserved, as are all unrelated provider fields.
     remove_codex_proxy_placeholders_from_providers(&mut providers);
+    providers.remove(LEGACY_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
 
     // The local proxy currently exposes HTTP/SSE, not Codex websocket routes.
     let table = codex_official_provider_table(Some(proxy_base_url), false);
 
     providers.insert(
-        CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID,
+        AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID,
         toml_edit::Item::Table(table),
     );
     doc["model_providers"] = toml_edit::Item::Table(providers);
     Ok(doc.to_string())
 }
 
-/// Whether a live Codex config is the official route projected by CC Switch.
+/// Whether a live Codex config is the official route projected by AutoTier
+/// or by a legacy AutoTier-compatible installation.
 pub fn codex_config_has_official_proxy_route(config_text: &str) -> bool {
-    if !config_text.contains(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID) {
+    let Ok(doc) = config_text.parse::<DocumentMut>() else {
+        return false;
+    };
+    let active_id = doc.get("model_provider").and_then(|item| item.as_str());
+    if !is_owned_codex_official_provider_id(active_id) {
         return false;
     }
-    config_text
-        .parse::<DocumentMut>()
-        .ok()
-        .and_then(|doc| {
-            doc.get("model_provider")
-                .and_then(|item| item.as_str())
-                .map(str::to_string)
+    doc.get("model_providers")
+        .and_then(|item| item.as_table())
+        .is_some_and(|providers| {
+            providers.contains_key(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
+                || providers.contains_key(LEGACY_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
         })
-        .as_deref()
-        == Some(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
 }
 
-/// Remove only the official takeover route owned by CC Switch. This is a
-/// last-resort crash cleanup when no live backup or provider SSOT is usable.
+/// Remove only the official takeover route owned by AutoTier or its legacy
+/// predecessor. This is a last-resort crash cleanup when no live backup or
+/// provider SSOT is usable.
 pub fn remove_codex_official_proxy_route(config_text: &str) -> Result<String, AppError> {
     let mut doc = config_text
         .parse::<DocumentMut>()
         .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
-    if doc.get("model_provider").and_then(|item| item.as_str())
-        != Some(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
-    {
+    let active_id = doc.get("model_provider").and_then(|item| item.as_str());
+    if !is_owned_codex_official_provider_id(active_id) {
         return Ok(config_text.to_string());
     }
 
@@ -2588,7 +2594,8 @@ pub fn remove_codex_official_proxy_route(config_text: &str) -> Result<String, Ap
                 "Invalid Codex config.toml: model_providers must be a table".to_string(),
             )
         })?;
-        providers.remove(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
+        providers.remove(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
+        providers.remove(LEGACY_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
         remove_codex_proxy_placeholders_from_providers(&mut providers);
         if !providers.is_empty() {
             doc["model_providers"] = toml_edit::Item::Table(providers);
@@ -2632,7 +2639,7 @@ pub fn inject_codex_unified_session_bucket(config_text: &str) -> Result<String, 
     let existing_custom_conflicts = doc
         .get("model_providers")
         .and_then(|item| item.as_table())
-        .and_then(|providers| providers.get(CC_SWITCH_CODEX_MODEL_PROVIDER_ID))
+        .and_then(|providers| providers.get(AUTOTIER_CODEX_MODEL_PROVIDER_ID))
         .and_then(|item| item.as_table())
         .is_some_and(|table| !table_matches_codex_unified_official_provider(table));
     if existing_custom_conflicts {
@@ -2642,7 +2649,7 @@ pub fn inject_codex_unified_session_bucket(config_text: &str) -> Result<String, 
         return Ok(config_text.to_string());
     }
 
-    doc["model_provider"] = toml_edit::value(CC_SWITCH_CODEX_MODEL_PROVIDER_ID);
+    doc["model_provider"] = toml_edit::value(AUTOTIER_CODEX_MODEL_PROVIDER_ID);
 
     if doc.get("model_providers").is_none() {
         let mut parent = toml_edit::Table::new();
@@ -2650,9 +2657,9 @@ pub fn inject_codex_unified_session_bucket(config_text: &str) -> Result<String, 
         doc["model_providers"] = toml_edit::Item::Table(parent);
     }
     if let Some(providers) = doc["model_providers"].as_table_mut() {
-        if !providers.contains_key(CC_SWITCH_CODEX_MODEL_PROVIDER_ID) {
+        if !providers.contains_key(AUTOTIER_CODEX_MODEL_PROVIDER_ID) {
             providers.insert(
-                CC_SWITCH_CODEX_MODEL_PROVIDER_ID,
+                AUTOTIER_CODEX_MODEL_PROVIDER_ID,
                 toml_edit::Item::Table(codex_unified_official_provider_table()),
             );
         }
@@ -2673,14 +2680,14 @@ pub fn strip_codex_unified_session_bucket(config_text: &str) -> Result<String, A
         .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
 
     if doc.get("model_provider").and_then(|item| item.as_str())
-        != Some(CC_SWITCH_CODEX_MODEL_PROVIDER_ID)
+        != Some(AUTOTIER_CODEX_MODEL_PROVIDER_ID)
     {
         return Ok(config_text.to_string());
     }
     let matches_injected = doc
         .get("model_providers")
         .and_then(|item| item.as_table())
-        .and_then(|providers| providers.get(CC_SWITCH_CODEX_MODEL_PROVIDER_ID))
+        .and_then(|providers| providers.get(AUTOTIER_CODEX_MODEL_PROVIDER_ID))
         .and_then(|item| item.as_table())
         .is_some_and(table_matches_codex_unified_official_provider);
     if !matches_injected {
@@ -2691,7 +2698,7 @@ pub fn strip_codex_unified_session_bucket(config_text: &str) -> Result<String, A
     let providers_empty = doc["model_providers"]
         .as_table_mut()
         .map(|providers| {
-            providers.remove(CC_SWITCH_CODEX_MODEL_PROVIDER_ID);
+            providers.remove(AUTOTIER_CODEX_MODEL_PROVIDER_ID);
             providers.is_empty()
         })
         .unwrap_or(false);
@@ -3053,8 +3060,8 @@ mod tests {
     impl CodexLiveTestHome {
         fn new() -> Self {
             let dir = tempfile::tempdir().expect("create isolated Codex live test home");
-            let original_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
-            std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            let original_test_home = std::env::var_os("AUTOTIER_TEST_HOME");
+            std::env::set_var("AUTOTIER_TEST_HOME", dir.path());
             crate::settings::reload_settings().expect("reload settings for isolated test home");
 
             Self {
@@ -3067,8 +3074,8 @@ mod tests {
     impl Drop for CodexLiveTestHome {
         fn drop(&mut self) {
             match &self.original_test_home {
-                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => std::env::set_var("AUTOTIER_TEST_HOME", value),
+                None => std::env::remove_var("AUTOTIER_TEST_HOME"),
             }
             let _ = crate::settings::reload_settings();
         }
@@ -3186,9 +3193,9 @@ mod tests {
 
         assert_eq!(
             doc.get("model_provider").and_then(|v| v.as_str()),
-            Some(CC_SWITCH_CODEX_MODEL_PROVIDER_ID)
+            Some(AUTOTIER_CODEX_MODEL_PROVIDER_ID)
         );
-        let custom = doc["model_providers"][CC_SWITCH_CODEX_MODEL_PROVIDER_ID]
+        let custom = doc["model_providers"][AUTOTIER_CODEX_MODEL_PROVIDER_ID]
             .as_table()
             .expect("custom provider table");
         assert_eq!(custom.get("name").and_then(|v| v.as_str()), Some("OpenAI"));
@@ -3220,7 +3227,7 @@ command = "example"
 
         assert_eq!(
             doc.get("model_provider").and_then(toml::Value::as_str),
-            Some(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
+            Some(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
         );
         assert!(doc.get("experimental_bearer_token").is_none());
         assert!(
@@ -3228,7 +3235,7 @@ command = "example"
             "unrelated config survives"
         );
 
-        let provider = &doc["model_providers"][CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID];
+        let provider = &doc["model_providers"][AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID];
         assert_eq!(
             provider.get("base_url").and_then(toml::Value::as_str),
             Some("http://127.0.0.1:15721/v1")
@@ -3286,7 +3293,7 @@ model_providers = { rightcode = { name = "RightCode", experimental_bearer_token 
             .get("experimental_bearer_token")
             .is_none());
         assert!(projected_doc["model_providers"]
-            .get(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
+            .get(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
             .is_some());
 
         let cleaned = remove_codex_official_proxy_route(&projected).expect("clean projected");
@@ -3294,7 +3301,7 @@ model_providers = { rightcode = { name = "RightCode", experimental_bearer_token 
         assert!(cleaned_doc.get("model_provider").is_none());
         assert!(cleaned_doc["model_providers"].get("rightcode").is_some());
         assert!(cleaned_doc["model_providers"]
-            .get(CC_SWITCH_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
+            .get(AUTOTIER_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
             .is_none());
     }
 
@@ -4767,7 +4774,7 @@ name = "any"
             parsed
                 .get("model_catalog_json")
                 .and_then(|value| value.as_str()),
-            Some(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)
+            Some(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME)
         );
         assert!(
             parsed
@@ -4808,7 +4815,7 @@ name = "xiaomi_mimo"
     #[test]
     fn native_web_search_field_removes_own_sentinel_when_not_disabled() {
         // Switching away from a native provider must re-enable web search by
-        // removing cc-switch's own "disabled" sentinel.
+        // removing AutoTier's own "disabled" sentinel.
         let input = r#"model = "gpt-5.5"
 web_search = "disabled"
 "#;
@@ -4816,14 +4823,14 @@ web_search = "disabled"
         let parsed: toml::Value = toml::from_str(&result).unwrap();
         assert!(
             parsed.get("web_search").is_none(),
-            "cc-switch's disabled sentinel should be removed when not native"
+            "AutoTier's disabled sentinel should be removed when not native"
         );
     }
 
     #[test]
     fn native_web_search_field_preserves_user_value() {
         // A user's own web_search value must never be clobbered by cleanup,
-        // only cc-switch's "disabled" sentinel is owned/removable.
+        // only AutoTier's "disabled" sentinel is owned/removable.
         let input = r#"web_search = "enabled"
 "#;
         let result = set_codex_native_web_search_field(input, false).unwrap();
@@ -4943,20 +4950,20 @@ web_search = "disabled"
     #[test]
     fn resolve_catalog_path_returns_none_when_config_missing_field() {
         let base = PathBuf::from("/tmp/.codex");
-        assert!(resolve_cc_switch_catalog_path("", &base).is_none());
+        assert!(resolve_autotier_catalog_path("", &base).is_none());
         assert!(
-            resolve_cc_switch_catalog_path("model = \"gpt-5\"", &base).is_none(),
+            resolve_autotier_catalog_path("model = \"gpt-5\"", &base).is_none(),
             "no model_catalog_json field should yield None"
         );
     }
 
     #[test]
-    fn resolve_catalog_path_accepts_cc_switch_owned_file() {
+    fn resolve_catalog_path_accepts_legacy_owned_file() {
         let base = PathBuf::from("/tmp/.codex");
         let config = r#"model_catalog_json = "/tmp/.codex/cc-switch-model-catalog.json"
 "#;
-        let resolved = resolve_cc_switch_catalog_path(config, &base).expect("path resolves");
-        assert_eq!(resolved, base.join(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME));
+        let resolved = resolve_autotier_catalog_path(config, &base).expect("path resolves");
+        assert_eq!(resolved, base.join(LEGACY_CODEX_MODEL_CATALOG_FILENAME));
     }
 
     #[test]
@@ -4965,7 +4972,7 @@ web_search = "disabled"
         let config = r#"model_catalog_json = "/Users/me/.codex/my-handwritten-catalog.json"
 "#;
         assert!(
-            resolve_cc_switch_catalog_path(config, &base).is_none(),
+            resolve_autotier_catalog_path(config, &base).is_none(),
             "external catalog files should be left alone"
         );
     }
@@ -5247,7 +5254,7 @@ web_search = "disabled"
         let input = r#"model_provider = "custom"
 model = "glm-5"
 "#;
-        // Simulate a WSL UNC path as cc-switch would see it on Windows;
+        // Simulate a historical WSL UNC path as an older installation would see it on Windows;
         // the function now writes just the relative filename.
         let unc_path =
             Path::new(r"\\wsl.localhost\Ubuntu\home\user\.codex\cc-switch-model-catalog.json");
@@ -5260,7 +5267,7 @@ model = "glm-5"
             .and_then(|v| v.as_str())
             .expect("model_catalog_json should be set");
         assert_eq!(
-            written_path, CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME,
+            written_path, AUTOTIER_CODEX_MODEL_CATALOG_FILENAME,
             "should write only the relative filename, not the UNC path"
         );
     }
@@ -5277,13 +5284,13 @@ model = "glm-5"
 
         assert_eq!(
             parsed.get("model_catalog_json").and_then(|v| v.as_str()),
-            Some(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME),
+            Some(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME),
             "should write only the relative filename, not the full path"
         );
     }
 
     #[test]
-    fn set_catalog_json_none_removes_cc_switch_owned_by_filename() {
+    fn set_catalog_json_none_removes_legacy_owned_by_filename() {
         // After the WSL fix, TOML may contain a Linux-style path.
         // The None arm must still remove it (file_name match catches any format).
         let input = r#"model_catalog_json = "/home/user/.codex/cc-switch-model-catalog.json"
@@ -5292,7 +5299,7 @@ model = "glm-5"
         let parsed: toml::Value = toml::from_str(&result).unwrap();
         assert!(
             parsed.get("model_catalog_json").is_none(),
-            "None arm should remove cc-switch-owned field regardless of path format"
+            "None arm should remove legacy-owned field regardless of path format"
         );
     }
 
@@ -5350,13 +5357,13 @@ model_catalog_json = "my-custom-catalog.json"
     #[test]
     fn resolve_catalog_finds_relative_filename() {
         let config_text = r#"model_provider = "custom"
-model_catalog_json = "cc-switch-model-catalog.json"
+model_catalog_json = "autotier-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
-        let result = resolve_cc_switch_catalog_path(config_text, &base_dir);
+        let result = resolve_autotier_catalog_path(config_text, &base_dir);
         assert_eq!(
             result,
-            Some(base_dir.join(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)),
+            Some(base_dir.join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME)),
             "relative filename should resolve under base_dir for file I/O"
         );
     }
@@ -5366,7 +5373,7 @@ model_catalog_json = "cc-switch-model-catalog.json"
         let config_text = r#"model_catalog_json = "/tmp/secret/cc-switch-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
-        let result = resolve_cc_switch_catalog_path(config_text, &base_dir);
+        let result = resolve_autotier_catalog_path(config_text, &base_dir);
         assert_eq!(
             result, None,
             "absolute path outside ~/.codex must not be accepted"
@@ -5375,23 +5382,23 @@ model_catalog_json = "cc-switch-model-catalog.json"
 
     #[test]
     fn resolve_catalog_accepts_absolute_path_inside_config_dir() {
-        let config_text = r#"model_catalog_json = "/home/user/.codex/cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "/home/user/.codex/autotier-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
-        let result = resolve_cc_switch_catalog_path(config_text, &base_dir);
+        let result = resolve_autotier_catalog_path(config_text, &base_dir);
         assert_eq!(
             result,
-            Some(base_dir.join(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)),
+            Some(base_dir.join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME)),
             "absolute path inside ~/.codex should be accepted"
         );
     }
 
     #[test]
     fn resolve_catalog_rejects_traversal_to_parent_directory() {
-        let config_text = r#"model_catalog_json = "../cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "../autotier-model-catalog.json"
 "#;
         let base_dir = PathBuf::from("/home/user/.codex");
-        let result = resolve_cc_switch_catalog_path(config_text, &base_dir);
+        let result = resolve_autotier_catalog_path(config_text, &base_dir);
         assert_eq!(
             result, None,
             "relative traversal outside ~/.codex must not be accepted"
@@ -5401,14 +5408,14 @@ model_catalog_json = "cc-switch-model-catalog.json"
     #[test]
     fn resolve_catalog_rejects_symlink_escaping_config_dir() {
         // 词法包含可被符号链接绕过：~/.codex/link -> 外部目录，
-        // "link/cc-switch-model-catalog.json" 词法上在 base 内，真实读取却落到
+        // "link/autotier-model-catalog.json" 词法上在 base 内，真实读取却落到
         // base 外。canonicalize 之后的二次校验必须拒绝。
         let temp = tempfile::tempdir().expect("tempdir");
         let base_dir = temp.path().join("codex");
         let outside_dir = temp.path().join("outside");
         fs::create_dir_all(&base_dir).expect("create base");
         fs::create_dir_all(&outside_dir).expect("create outside");
-        let escaped_file = outside_dir.join(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME);
+        let escaped_file = outside_dir.join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME);
         fs::write(&escaped_file, r#"{"models":[]}"#).expect("write escaped catalog");
 
         #[cfg(unix)]
@@ -5416,9 +5423,9 @@ model_catalog_json = "cc-switch-model-catalog.json"
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&outside_dir, base_dir.join("link")).expect("symlink");
 
-        let config_text = r#"model_catalog_json = "link/cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "link/autotier-model-catalog.json"
 "#;
-        let result = resolve_cc_switch_catalog_path(config_text, &base_dir);
+        let result = resolve_autotier_catalog_path(config_text, &base_dir);
         assert_eq!(
             result, None,
             "symlink escaping the config dir must be rejected after canonicalization"
@@ -5431,16 +5438,16 @@ model_catalog_json = "cc-switch-model-catalog.json"
         let temp = tempfile::tempdir().expect("tempdir");
         let base_dir = temp.path().join("codex");
         fs::create_dir_all(&base_dir).expect("create base");
-        let catalog_file = base_dir.join(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME);
+        let catalog_file = base_dir.join(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME);
         fs::write(&catalog_file, r#"{"models":[]}"#).expect("write catalog");
 
-        let config_text = r#"model_catalog_json = "cc-switch-model-catalog.json"
+        let config_text = r#"model_catalog_json = "autotier-model-catalog.json"
 "#;
-        let result = resolve_cc_switch_catalog_path(config_text, &base_dir);
+        let result = resolve_autotier_catalog_path(config_text, &base_dir);
         let resolved = result.expect("real file inside config dir should be accepted");
         assert_eq!(
             resolved.file_name().and_then(|n| n.to_str()),
-            Some(CC_SWITCH_CODEX_MODEL_CATALOG_FILENAME)
+            Some(AUTOTIER_CODEX_MODEL_CATALOG_FILENAME)
         );
     }
 

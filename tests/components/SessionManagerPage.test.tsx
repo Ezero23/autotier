@@ -17,7 +17,12 @@ import { setSessionFixtures } from "../msw/state";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
+const LIST_VIEW_MODE_STORAGE_KEY = "autotier.sessionManager.listViewMode";
+const LEGACY_LIST_VIEW_MODE_STORAGE_KEY =
+  "cc-switch.sessionManager.listViewMode";
 const GROUP_EXPANSION_STORAGE_KEY =
+  "autotier.sessionManager.groupExpansionState";
+const LEGACY_GROUP_EXPANSION_STORAGE_KEY =
   "cc-switch.sessionManager.groupExpansionState";
 
 vi.mock("sonner", () => ({
@@ -155,8 +160,10 @@ describe("SessionManagerPage", () => {
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
     Element.prototype.scrollIntoView = vi.fn();
-    window.localStorage.removeItem("cc-switch.sessionManager.listViewMode");
+    window.localStorage.removeItem(LIST_VIEW_MODE_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_LIST_VIEW_MODE_STORAGE_KEY);
     window.localStorage.removeItem(GROUP_EXPANSION_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_GROUP_EXPANSION_STORAGE_KEY);
 
     const sessions: SessionMeta[] = [
       {

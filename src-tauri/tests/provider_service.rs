@@ -2431,7 +2431,7 @@ fn switch_codex_syncs_shared_keys_from_live_into_common_config() {
 model_provider = "aprov"
 wire_api = "chat"
 experimental_bearer_token = "sk-a-live-secret"
-model_catalog_json = "cc-switch-model-catalog.json"
+model_catalog_json = "autotier-model-catalog.json"
 web_search = "disabled"
 disable_response_storage = true
 

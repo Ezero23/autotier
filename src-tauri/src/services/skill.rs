@@ -1,7 +1,7 @@
 //! Skills 服务层
 //!
 //! v3.10.0+ 统一管理架构：
-//! - SSOT（单一事实源）：`~/.cc-switch/skills/`
+//! - SSOT（单一事实源）：`~/.autotier/skills/`
 //! - 安装时下载到 SSOT，按需同步到各应用目录
 //! - 数据库存储安装记录和启用状态
 
@@ -65,10 +65,11 @@ pub enum SyncMethod {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillStorageLocation {
-    /// CC Switch 管理目录 (~/.cc-switch/skills/)
+    /// AutoTier 管理目录 (~/.autotier/skills/)。
+    #[serde(rename = "autotier", alias = "cc_switch", alias = "cc-switch")]
     #[default]
-    CcSwitch,
-    /// Agent Skills 统一标准目录 (~/.agents/skills/)
+    AutoTier,
+    /// Agent Skills 统一标准目录 (~/.agents/skills/)。
     Unified,
 }
 
@@ -545,11 +546,11 @@ impl SkillService {
 
     // ========== 路径管理 ==========
 
-    /// 获取 SSOT 目录（根据设置返回 ~/.cc-switch/skills/ 或 ~/.agents/skills/）
+    /// 获取 SSOT 目录（根据设置返回 ~/.autotier/skills/ 或 ~/.agents/skills/）
     pub fn get_ssot_dir() -> Result<PathBuf> {
         let location = crate::settings::get_skill_storage_location();
         let dir = match location {
-            SkillStorageLocation::CcSwitch => get_app_config_dir().join("skills"),
+            SkillStorageLocation::AutoTier => get_app_config_dir().join("skills"),
             SkillStorageLocation::Unified => {
                 crate::config::get_home_dir().join(".agents").join("skills")
             }
@@ -558,7 +559,7 @@ impl SkillService {
         Ok(dir)
     }
 
-    /// 获取 Skill 卸载备份目录（~/.cc-switch/skill-backups/）
+    /// 获取 Skill 卸载备份目录（~/.autotier/skill-backups/）
     fn get_backup_dir() -> Result<PathBuf> {
         let dir = get_app_config_dir().join("skill-backups");
         fs::create_dir_all(&dir)?;
@@ -611,7 +612,7 @@ impl SkillService {
         }
 
         // 默认路径：回退到用户主目录下的标准位置。
-        // 必须走 get_home_dir()（可被 CC_SWITCH_TEST_HOME 覆盖）：Windows 上 dirs::home_dir()
+        // 必须走 get_home_dir()（可被 AUTOTIER_TEST_HOME 覆盖）：Windows 上 dirs::home_dir()
         // 走 Known Folder API，测试无法隔离真实用户目录。
         let home = crate::config::get_home_dir();
 
@@ -1020,7 +1021,7 @@ impl SkillService {
                     .map(|path| path.to_string_lossy().to_string());
 
                     // Pi 目录可能包含用户自己维护的同名 Skill。删除 SSOT 前仅移除
-                    // 能验证为 CC Switch 部署的副本；其余路径保留并返回警告。
+                    // 能验证为 AutoTier 部署的副本；其余路径保留并返回警告。
                     if let Some(destination) = pi_removal_path {
                         let removal =
                             Self::remove_verified_pi_destination(&source, &destination, &directory);
@@ -1587,7 +1588,7 @@ impl SkillService {
         // 1. 解析旧目录和新目录（不改设置）
         let old_dir = Self::get_ssot_dir()?;
         let new_dir = match target {
-            SkillStorageLocation::CcSwitch => get_app_config_dir().join("skills"),
+            SkillStorageLocation::AutoTier => get_app_config_dir().join("skills"),
             SkillStorageLocation::Unified => {
                 crate::config::get_home_dir().join(".agents").join("skills")
             }
@@ -1865,7 +1866,7 @@ impl SkillService {
 
     /// 扫描未管理的 Skills
     ///
-    /// 扫描各应用目录，找出未被 CC Switch 管理的 Skills
+    /// 扫描各应用目录，找出未被 AutoTier 管理的 Skills
     pub fn scan_unmanaged(db: &Arc<Database>) -> Result<Vec<UnmanagedSkill>> {
         let _state_guard = skill_state_read_guard();
         let managed_skills = db.get_all_installed_skills()?;
@@ -1885,7 +1886,7 @@ impl SkillService {
             scan_sources.push((agents_dir, "agents".to_string()));
         }
         if let Ok(ssot_dir) = Self::get_ssot_dir() {
-            scan_sources.push((ssot_dir, "cc-switch".to_string()));
+            scan_sources.push((ssot_dir, "autotier".to_string()));
         }
 
         let mut unmanaged: HashMap<String, UnmanagedSkill> = HashMap::new();
@@ -1929,7 +1930,7 @@ impl SkillService {
 
     /// 从应用目录导入 Skills
     ///
-    /// 将未管理的 Skills 导入到 CC Switch 统一管理
+    /// 将未管理的 Skills 导入到 AutoTier 统一管理
     pub fn import_from_apps(
         db: &Arc<Database>,
         imports: Vec<ImportSkillSelection>,
@@ -1956,7 +1957,7 @@ impl SkillService {
         if let Some(agents_dir) = get_agents_skills_dir() {
             search_sources.push((agents_dir, "agents".to_string()));
         }
-        search_sources.push((ssot_dir.clone(), "cc-switch".to_string()));
+        search_sources.push((ssot_dir.clone(), "autotier".to_string()));
 
         for selection in imports {
             // selection.directory 由前端 IPC 直接传入、此前全程无校验，而它既被
@@ -3385,7 +3386,7 @@ impl SkillService {
         skill: &InstalledSkill,
         excluded_path: Option<&Path>,
     ) -> Result<Option<PathBuf>> {
-        // 返回值会被整目录复制进 ~/.cc-switch/skill-backups/ 并由 get_skill_backups
+        // 返回值会被整目录复制进 ~/.autotier/skill-backups/ 并由 get_skill_backups
         // 在界面上列出——脏 directory 在这里等于任意文件读取 + 外泄通道。
         let directory = Self::require_valid_directory(&skill.directory)?;
 
@@ -5198,7 +5199,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn uninstall_warns_when_the_pi_root_cannot_be_resolved() {
-        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let _location = StorageLocationGuard::set(SkillStorageLocation::AutoTier);
         let temp = tempdir().expect("tempdir");
         let _home = TestHomeGuard::set(temp.path());
         let _pi_dir =
@@ -5222,21 +5223,21 @@ mod tests {
             .is_none());
     }
 
-    /// CC_SWITCH_TEST_HOME 隔离守卫（serial 测试间互斥由 #[serial] 保证，
+    /// AUTOTIER_TEST_HOME 隔离守卫（serial 测试间互斥由 #[serial] 保证，
     /// 守卫只负责在测试结束后恢复原值）。
     struct TestHomeGuard(Option<std::ffi::OsString>);
     impl TestHomeGuard {
         fn set(home: &Path) -> Self {
-            let guard = Self(std::env::var_os("CC_SWITCH_TEST_HOME"));
-            std::env::set_var("CC_SWITCH_TEST_HOME", home);
+            let guard = Self(std::env::var_os("AUTOTIER_TEST_HOME"));
+            std::env::set_var("AUTOTIER_TEST_HOME", home);
             guard
         }
     }
     impl Drop for TestHomeGuard {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => std::env::set_var("AUTOTIER_TEST_HOME", value),
+                None => std::env::remove_var("AUTOTIER_TEST_HOME"),
             }
         }
     }
@@ -5415,7 +5416,7 @@ mod tests {
         let _guard = TestHomeGuard::set(temp.path());
 
         // 手工放置一个备份：meta.json 里的 directory 指向 SSOT 之外。
-        // SSOT 位于 {home}/.cc-switch/skills，"../../pwned-restore" 若生效会写到 {home}/pwned-restore。
+        // SSOT 位于 {home}/.autotier/skills，"../../pwned-restore" 若生效会写到 {home}/pwned-restore。
         let backup_id = "20260727_120000_evil";
         let backup_dir = SkillService::get_backup_dir()
             .expect("backup dir")
@@ -5495,7 +5496,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn migrate_storage_rejects_an_aliased_destination_before_moving_skills() {
-        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let _location = StorageLocationGuard::set(SkillStorageLocation::AutoTier);
         let temp = tempdir().expect("tempdir");
         let _home = TestHomeGuard::set(temp.path());
         let _pi_dir =
@@ -5517,7 +5518,7 @@ mod tests {
         );
         assert_eq!(
             crate::settings::get_skill_storage_location(),
-            SkillStorageLocation::CcSwitch
+            SkillStorageLocation::AutoTier
         );
         assert!(
             source.join("SKILL.md").exists(),
@@ -5542,7 +5543,7 @@ mod tests {
             .join("test-skill");
         write_skill(&old_source, "managed");
 
-        let result = SkillService::migrate_storage(&db, SkillStorageLocation::CcSwitch)
+        let result = SkillService::migrate_storage(&db, SkillStorageLocation::AutoTier)
             .expect("migrate away from alias");
         let new_source = crate::config::get_app_config_dir()
             .join("skills")
@@ -5569,7 +5570,7 @@ mod tests {
         let _guard = TestHomeGuard::set(temp.path());
 
         // 模拟同步导入灌进来的脏数据：directory 含路径穿越（save_skill 不校验，
-        // 与 import_sql_string_for_sync 的效果一致）。SSOT = {home}/.cc-switch/skills，
+        // 与 import_sql_string_for_sync 的效果一致）。SSOT = {home}/.autotier/skills，
         // "../../victim-uninstall" 解析为 {home}/victim-uninstall。
         let victim = temp.path().join("victim-uninstall");
         fs::create_dir_all(&victim).expect("create victim dir");
@@ -5601,7 +5602,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn migrate_storage_retargets_a_managed_pi_symlink() {
-        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let _location = StorageLocationGuard::set(SkillStorageLocation::AutoTier);
         let temp = tempdir().expect("tempdir");
         let _home = TestHomeGuard::set(temp.path());
         let _pi_dir = crate::pi_config::test_support::TestAgentDir::new();
@@ -5639,7 +5640,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn migrate_storage_retargets_an_equivalent_relative_pi_symlink() {
-        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let _location = StorageLocationGuard::set(SkillStorageLocation::AutoTier);
         let temp = tempdir().expect("tempdir");
         let _home = TestHomeGuard::set(temp.path());
         let _pi_dir =
@@ -5684,7 +5685,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn migrate_storage_skips_bad_rows_without_moving_foreign_dirs() {
-        let _location = StorageLocationGuard::set(SkillStorageLocation::CcSwitch);
+        let _location = StorageLocationGuard::set(SkillStorageLocation::AutoTier);
 
         let temp = tempdir().expect("tempdir");
         let _guard = TestHomeGuard::set(temp.path());
@@ -5768,25 +5769,25 @@ mod tests {
     }
 
     #[test]
-    // serial：与 backup/s3_sync/deeplink 等同样读写进程级 CC_SWITCH_TEST_HOME 的测试互斥，
+    // serial：与 backup/s3_sync/deeplink 等同样读写进程级 AUTOTIER_TEST_HOME 的测试互斥，
     // EnvGuard 只负责恢复不提供互斥。
     #[serial_test::serial]
     fn get_app_skills_dir_honors_test_home_override() {
-        // 回归：曾直呼 dirs::home_dir() 绕过 CC_SWITCH_TEST_HOME——Unix 上碰巧跟 $HOME
+        // 回归：曾直呼 dirs::home_dir() 绕过 AUTOTIER_TEST_HOME——Unix 上碰巧跟 $HOME
         // 一致所以测试能过，Windows 上 dirs 走 Known Folder API，测试隔离整体失效
         // （tests/skill_sync.rs 扫到 runner 真实用户目录）。
         struct EnvGuard(Option<std::ffi::OsString>);
         impl Drop for EnvGuard {
             fn drop(&mut self) {
                 match self.0.take() {
-                    Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
-                    None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+                    Some(value) => std::env::set_var("AUTOTIER_TEST_HOME", value),
+                    None => std::env::remove_var("AUTOTIER_TEST_HOME"),
                 }
             }
         }
         let temp = tempdir().expect("tempdir");
-        let _guard = EnvGuard(std::env::var_os("CC_SWITCH_TEST_HOME"));
-        std::env::set_var("CC_SWITCH_TEST_HOME", temp.path());
+        let _guard = EnvGuard(std::env::var_os("AUTOTIER_TEST_HOME"));
+        std::env::set_var("AUTOTIER_TEST_HOME", temp.path());
 
         let dir =
             SkillService::get_app_skills_dir(&AppType::Claude).expect("resolve claude skills dir");
