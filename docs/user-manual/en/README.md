@@ -1,11 +1,11 @@
-# CC Switch User Manual
+# AutoTier User Manual
 
 > All-in-One Assistant for Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
 
 ## Table of Contents
 
 ```
-CC Switch User Manual
+AutoTier User Manual
 │
 ├── 1. Getting Started
 │   ├── 1.1 Introduction
@@ -90,7 +90,7 @@ CC Switch User Manual
 
 | File | Description |
 |------|-------------|
-| [5.1-config-files.md](./5-faq/5.1-config-files.md) | CC Switch storage, CLI configuration file formats |
+| [5.1-config-files.md](./5-faq/5.1-config-files.md) | AutoTier storage, CLI configuration file formats |
 | [5.2-questions.md](./5-faq/5.2-questions.md) | Frequently asked questions |
 | [5.3-deeplink.md](./5-faq/5.3-deeplink.md) | Deep link protocol, generation and usage |
 | [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | Environment variable conflict detection and resolution |
@@ -106,11 +106,11 @@ CC Switch User Manual
 
 ## Version Information
 
-- Documentation version: v3.16.0
-- Last updated: 2026-05-29
-- Applicable to CC Switch v3.16.0+
+- Documentation version: v0.1.2
+- Last updated: 2026-08-22
+- Applicable to AutoTier v0.1.2+
 
-### v3.16.0 Highlights
+### Current Version Capabilities
 
 - **Codex Chat Completions routing**: route Chat-only providers such as DeepSeek, Kimi, GLM, and MiniMax through Codex. See [2.1 Add Provider](./2-providers/2.1-add.md)
 - **Managed CLI tool lifecycle**: install, update, update all, and diagnose Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes from Settings / About. See [1.5 Personalization](./1-getting-started/1.5-settings.md)
@@ -130,5 +130,5 @@ CC Switch User Manual
 
 Feel free to submit Issues or PRs to improve the documentation:
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/Ezero23/autotier/issues)
+- [GitHub Repository](https://github.com/Ezero23/autotier)

@@ -1,11 +1,11 @@
-# CC Switch ユーザーマニュアル
+# AutoTier ユーザーマニュアル
 
 > Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes オールインワンアシスタント
 
 ## 目次構成
 
 ```
-CC Switch ユーザーマニュアル
+AutoTier ユーザーマニュアル
 │
 ├── 1. はじめに
 │   ├── 1.1 ソフトウェア紹介
@@ -90,7 +90,7 @@ CC Switch ユーザーマニュアル
 
 | ファイル | 内容 |
 |------|------|
-| [5.1-config-files.md](./5-faq/5.1-config-files.md) | CC Switch のストレージ、CLI 設定ファイル形式 |
+| [5.1-config-files.md](./5-faq/5.1-config-files.md) | AutoTier のストレージ、CLI 設定ファイル形式 |
 | [5.2-questions.md](./5-faq/5.2-questions.md) | よくある質問と回答 |
 | [5.3-deeplink.md](./5-faq/5.3-deeplink.md) | ディープリンクプロトコル、生成と使用方法 |
 | [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 環境変数の競合検出と対処 |
@@ -106,11 +106,11 @@ CC Switch ユーザーマニュアル
 
 ## バージョン情報
 
-- ドキュメントバージョン：v3.16.0
-- 最終更新：2026-05-29
-- CC Switch v3.16.0+ 対応
+- ドキュメントバージョン：v0.1.2
+- 最終更新：2026-08-22
+- AutoTier v0.1.2+ 対応
 
-### v3.16.0 の注目機能
+### 現行バージョンの機能
 
 - **Codex Chat Completions ルーティング**：DeepSeek、Kimi、GLM、MiniMax など Chat 専用プロバイダーを Codex で利用可能 — 詳細は [2.1 プロバイダーの追加](./2-providers/2.1-add.md)
 - **管理対象 CLI ツールのライフサイクル**：設定 / About で Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes のインストール、更新、一括更新、診断に対応 — 詳細は [1.5 個人設定](./1-getting-started/1.5-settings.md)
@@ -130,5 +130,5 @@ CC Switch ユーザーマニュアル
 
 Issue や PR でドキュメントの改善にご協力ください：
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/Ezero23/autotier/issues)
+- [GitHub Repository](https://github.com/Ezero23/autotier)

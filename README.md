@@ -13,9 +13,9 @@ AutoTier 构建于 `farion1231/cc-switch` 之上，保留完整上游历史：
 origin   = https://github.com/Ezero23/autotier.git
 upstream = https://github.com/farion1231/cc-switch.git
 base commit       = 30409878bdbdf1c7091c559d6afc367a052da39c
-package version   = 3.18.0
-git describe      = v3.18.0-36-g30409878
-last upstream sync = v3.20.0 (0b5da510, 2026-08-19)
+package version   = 0.1.2
+git describe      = v0.1.2
+release            = AutoTier v0.1.2 (2026-08-21)
 ```
 
 - 上游 README 原样保留在 [`README.upstream.md`](./README.upstream.md);MIT License 与 attribution 未改动
@@ -23,7 +23,7 @@ last upstream sync = v3.20.0 (0b5da510, 2026-08-19)
 
 ## 当前状态
 
-**AutoTier v0.1.0（Shadow 观测）** — Phase 5–10 已合入 `main`。
+**AutoTier v0.1.2（Shadow 观测）** — v0.1.2 已合入 `main` 并完成五平台 Release。
 
 v0.1 只做 Shadow 观测：生成可解释的候选路由决策与成本区间，**不修改任何真实出站模型或 Provider**。阻断级不变量（AMEND-001 第 2 节）:
 
@@ -46,7 +46,7 @@ actual_outbound_provider == baseline_outbound_provider
 
 ### 发版与验收
 
-- Release Notes：`docs/release-notes/v0.1.0-zh.md` / `v0.1.0-en.md`
+- Release Notes：`docs/release-notes/v0.1.0-zh.md` / `v0.1.0-en.md`（v0.1 系列说明）
 - 全新安装 E2E 清单：`docs/autotier/v0.1-e2e-checklist.md`
 - v0.2+（未实现）：Policy Hint、Live Canary
 
