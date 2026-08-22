@@ -282,7 +282,7 @@ AutoTier には「共有設定スニペット」機能があり、APIキーや�
 <details>
 <summary><strong>macOS のインストールについて</strong></summary>
 
-現在の AutoTier macOS ビルドは署名・公証されていません。`AutoTier-v0.1.2-macOS.zip` をダウンロードして `AutoTier.app` を展開し、初回起動時は必要に応じて右クリックの「開く」または macOS の「プライバシーとセキュリティ」で許可してください。
+現在の AutoTier macOS ビルドは署名・公証されていません。`AutoTier-v0.1.3-macOS.zip` をダウンロードして `AutoTier.app` を展開し、初回起動時は必要に応じて右クリックの「開く」または macOS の「プライバシーとセキュリティ」で許可してください。
 
 </details>
 
@@ -364,7 +364,7 @@ AUTOTIER_GDK_BACKEND=wayland ./AutoTier-*.AppImage
 
 **手動ダウンロード**
 
-[Releases](https://github.com/Ezero23/autotier/releases) から `AutoTier-v0.1.2-macOS.zip` をダウンロードして展開します。現在の未署名ビルドには DMG は含まれません。`AutoTier.app` を「アプリケーション」フォルダに移動し、初回起動時は必要に応じて右クリックの「開く」または macOS の「プライバシーとセキュリティ」で許可してください。
+[Releases](https://github.com/Ezero23/autotier/releases) から `AutoTier-v0.1.3-macOS.zip` をダウンロードして展開します。現在の未署名ビルドには DMG は含まれません。`AutoTier.app` を「アプリケーション」フォルダに移動し、初回起動時は必要に応じて右クリックの「開く」または macOS の「プライバシーとセキュリティ」で許可してください。
 
 ### Arch Linux ユーザー
 

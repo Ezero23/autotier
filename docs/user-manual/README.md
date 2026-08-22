@@ -12,9 +12,9 @@
 
 ## Version / 版本 / バージョン
 
-- Documentation version: v0.1.2
+- Documentation version: v0.1.3
 - Last updated: 2026-08-22
-- Compatible with AutoTier v0.1.2+
+- Compatible with AutoTier v0.1.3+
 
 ## Links
 
