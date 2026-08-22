@@ -106,9 +106,9 @@ AutoTier User Manual
 
 ## Version Information
 
-- Documentation version: v0.1.2
+- Documentation version: v0.1.3
 - Last updated: 2026-08-22
-- Applicable to AutoTier v0.1.2+
+- Applicable to AutoTier v0.1.3+
 
 ### Current Version Capabilities
 

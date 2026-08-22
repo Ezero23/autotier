@@ -13,9 +13,9 @@ AutoTier 构建于 `farion1231/cc-switch` 之上，保留完整上游历史：
 origin   = https://github.com/Ezero23/autotier.git
 upstream = https://github.com/farion1231/cc-switch.git
 base commit       = 30409878bdbdf1c7091c559d6afc367a052da39c
-package version   = 0.1.2
-git describe      = v0.1.2
-release            = AutoTier v0.1.2 (2026-08-21)
+package version   = 0.1.3
+git describe      = v0.1.3
+release            = AutoTier v0.1.3 (2026-08-22)
 ```
 
 - 上游 README 原样保留在 [`README.upstream.md`](./README.upstream.md);MIT License 与 attribution 未改动
@@ -23,7 +23,7 @@ release            = AutoTier v0.1.2 (2026-08-21)
 
 ## 当前状态
 
-**AutoTier v0.1.2（Shadow 观测）** — v0.1.2 已合入 `main` 并完成五平台 Release。
+**AutoTier v0.1.3（Shadow 观测）** — v0.1.3 已合入 `main` 并完成更新入口修复。
 
 v0.1 只做 Shadow 观测：生成可解释的候选路由决策与成本区间，**不修改任何真实出站模型或 Provider**。阻断级不变量（AMEND-001 第 2 节）:
 

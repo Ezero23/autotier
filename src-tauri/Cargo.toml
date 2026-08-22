@@ -1,6 +1,6 @@
 [package]
 name = "autotier"
-version = "0.1.2"
+version = "0.1.3"
 description = "AutoTier — local-first Shadow routing for Claude Code and Agent CLIs"
 authors = ["Jason Young"]
 license = "MIT"
