@@ -1,4 +1,4 @@
-# CC Switch User Manual / 用户手册 / ユーザーマニュアル
+# AutoTier User Manual / 用户手册 / ユーザーマニュアル
 
 > Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
 
@@ -12,11 +12,11 @@
 
 ## Version / 版本 / バージョン
 
-- Documentation version: v3.16.0
-- Last updated: 2026-05-29
-- Compatible with CC Switch v3.16.0+
+- Documentation version: v0.1.2
+- Last updated: 2026-08-22
+- Compatible with AutoTier v0.1.2+
 
 ## Links
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/Ezero23/autotier/issues)
+- [GitHub Repository](https://github.com/Ezero23/autotier)

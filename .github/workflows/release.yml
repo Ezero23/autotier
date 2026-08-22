@@ -645,7 +645,7 @@ jobs:
 
             ### Downloads
 
-            - **macOS**: `AutoTier-${{ github.ref_name }}-macOS.dmg` (recommended) or `.zip`
+            - **macOS**: `AutoTier-${{ github.ref_name }}-macOS.zip` for unsigned builds; signed builds may also include `.dmg`
             - **Windows (x64)**: `AutoTier-${{ github.ref_name }}-Windows.msi` or `-Portable.zip`
             - **Windows (ARM64)**: `AutoTier-${{ github.ref_name }}-Windows-arm64.msi` or `-Portable.zip`
             - **Linux (x64)**: `AutoTier-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`

@@ -1,11 +1,11 @@
-# CC Switch 用户手册
+# AutoTier 用户手册
 
 > Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes 全方位辅助工具
 
 ## 目录结构
 
 ```
-📚 CC Switch 用户手册
+📚 AutoTier 用户手册
 │
 ├── 1. 快速入门
 │   ├── 1.1 软件介绍
@@ -90,7 +90,7 @@
 
 | 文件 | 内容 |
 |------|------|
-| [5.1-config-files.md](./5-faq/5.1-config-files.md) | CC Switch 存储、CLI 配置文件格式 |
+| [5.1-config-files.md](./5-faq/5.1-config-files.md) | AutoTier 存储、CLI 配置文件格式 |
 | [5.2-questions.md](./5-faq/5.2-questions.md) | 常见问题解答 |
 | [5.3-deeplink.md](./5-faq/5.3-deeplink.md) | 深度链接协议、生成和使用方法 |
 | [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 环境变量冲突检测与处理 |
@@ -106,11 +106,11 @@
 
 ## 版本信息
 
-- 文档版本：v3.16.0
-- 最后更新：2026-05-29
-- 适用于 CC Switch v3.16.0+
+- 文档版本：v0.1.2
+- 最后更新：2026-08-22
+- 适用于 AutoTier v0.1.2+
 
-### v3.16.0 亮点
+### 当前版本能力
 
 - **Codex Chat Completions 路由**：DeepSeek、Kimi、GLM、MiniMax 等仅支持 Chat 协议的供应商可通过 Codex 使用 — 详见 [2.1 添加供应商](./2-providers/2.1-add.md)
 - **托管 CLI 工具生命周期**：在设置 / 关于页安装、升级、全部升级并诊断 Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes — 详见 [1.5 个性化配置](./1-getting-started/1.5-settings.md)
@@ -130,5 +130,5 @@
 
 欢迎提交 Issue 或 PR 改进文档：
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/Ezero23/autotier/issues)
+- [GitHub Repository](https://github.com/Ezero23/autotier)
