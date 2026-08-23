@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# AutoTier v0.1.0 automated release verification (10B + E2E checklist mapping)
+# AutoTier v0.1 automated release verification (10B + E2E checklist mapping)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RESULT="$ROOT/docs/autotier/v0.1-e2e-automation-results.md"
 TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+APP_VERSION="$(node -p "require('$ROOT/package.json').version")"
+export APP_VERSION
 
 pass=0
 fail=0
@@ -65,8 +67,9 @@ run_step "E2E-2a" "productName AutoTier in tauri.conf" \
   grep -q '"productName": "AutoTier"' src-tauri/tauri.conf.json
 run_step "E2E-2b" "bundle id com.ezero.autotier" \
   grep -q '"identifier": "com.ezero.autotier"' src-tauri/tauri.conf.json
-run_step "E2E-2c" "version 0.1.0" \
-  grep -q '"version": "0.1.0"' src-tauri/tauri.conf.json
+run_step "E2E-2c" "version $APP_VERSION" \
+  node -e 'const fs=require("fs");const [file,expected]=process.argv.slice(1);const actual=JSON.parse(fs.readFileSync(file,"utf8")).version;if(actual!==expected){throw new Error(`expected ${expected}, got ${actual}`)}' \
+  src-tauri/tauri.conf.json "$APP_VERSION"
 
 skip_step "E2E-1" "GUI fresh install launch" "requires desktop manual run"
 skip_step "E2E-3" "Provider config UI" "requires desktop manual run"
@@ -78,9 +81,8 @@ skip_step "E2E-11" "Decision panel UI" "covered by vitest; full GUI manual"
 # Optional local Linux .deb (unsigned) when building on Linux CI/dev VM
 if [ "$(uname -s)" = "Linux" ] && command -v pnpm >/dev/null; then
   run_step "BUILD-1" "Linux .deb (unsigned)" bash -c '
-    node -e "const fs=require(\"fs\");const p=\"src-tauri/tauri.conf.json\";const j=JSON.parse(fs.readFileSync(p,\"utf8\"));j.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(j,null,2)+\"\\n\");"
-    pnpm tauri build --bundles deb
-    test -f src-tauri/target/release/bundle/deb/AutoTier_0.1.0_amd64.deb
+    pnpm tauri build --bundles deb --config '\''{"bundle":{"createUpdaterArtifacts":false}}'\''
+    test -f "src-tauri/target/release/bundle/deb/AutoTier_${APP_VERSION}_amd64.deb"
   '
 else
   skip_step "BUILD-1" "Linux .deb" "not Linux or pnpm missing"
@@ -88,7 +90,7 @@ fi
 
 mkdir -p "$(dirname "$RESULT")"
 cat > "$RESULT" <<EOF
-# AutoTier v0.1.0 — Automated Verification Results
+# AutoTier v$APP_VERSION — Automated Verification Results
 
 **Generated**: $TS UTC
 **Git**: \`$GIT_SHA\`
