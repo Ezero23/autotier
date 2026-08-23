@@ -15,7 +15,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use autotier_lib::{AutotierDecisionRow, AutotierRoutingConfigDto, Database, Provider};
+use autotier_lib::{
+    AutotierDecisionRow, AutotierProviderSlotDto, AutotierRoutingConfigDto, Database, Provider,
+};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
@@ -297,6 +299,27 @@ fn set_autotier_mode(db: &Database, mode: &str) {
     .expect("set autotier mode");
 }
 
+fn set_provider_slot(db: &Database, provider_id: &str, slot: &str, model_id: &str) {
+    let now = chrono::Utc::now().timestamp_millis();
+    db.autotier_upsert_slot(&AutotierProviderSlotDto {
+        provider_id: provider_id.into(),
+        slot: slot.into(),
+        model_id: model_id.into(),
+        capability_status: "unknown".into(),
+        supports_tools: None,
+        supports_streaming: None,
+        supports_vision: None,
+        context_limit: None,
+        api_format: None,
+        pricing_source: None,
+        capability_source: None,
+        verified_at: None,
+        created_at: now,
+        updated_at: now,
+    })
+    .expect("save AutoTier provider slot");
+}
+
 fn db_file_path() -> std::path::PathBuf {
     let home = ensure_test_home().to_path_buf();
     home.join(".autotier").join("autotier.db")
@@ -372,6 +395,7 @@ async fn shadow_non_streaming_preserves_model_and_provider() {
         .expect("save provider");
     db.set_current_provider("claude", "p-shadow")
         .expect("set current provider");
+    set_provider_slot(&db, "p-shadow", "cheap", "candidate-cheap-model");
 
     let info = state.proxy_service.start().await.expect("start proxy");
     let port = info.port;
@@ -395,6 +419,12 @@ async fn shadow_non_streaming_preserves_model_and_provider() {
     assert_eq!(row.initial_selected_provider.as_deref(), Some("p-shadow"));
     assert_eq!(row.baseline_outbound_provider.as_deref(), Some("p-shadow"));
     assert_eq!(row.actual_outbound_provider.as_deref(), Some("p-shadow"));
+    assert_eq!(row.recommended_slot.as_deref(), Some("cheap"));
+    assert_eq!(row.candidate_provider.as_deref(), Some("p-shadow"));
+    assert_eq!(
+        row.candidate_model.as_deref(),
+        Some("candidate-cheap-model")
+    );
     assert_eq!(row.status_code, Some(200));
     assert_eq!(row.outcome.as_deref(), Some("success"));
     assert_eq!(row.fallback_count, 0);

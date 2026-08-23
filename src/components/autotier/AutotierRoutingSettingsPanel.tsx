@@ -206,9 +206,7 @@ function AutotierRoutingSettingsPanelInner() {
     }
   };
 
-  const showLegacyImport =
-    legacyStatus.data?.legacy_db_exists &&
-    !legacyStatus.data?.autotier_db_exists;
+  const showLegacyImport = legacyStatus.data?.legacy_db_exists;
 
   const isLoading = configQuery.isLoading;
   const loadError = configQuery.error;

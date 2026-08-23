@@ -50,7 +50,9 @@ pub use config::{
     get_app_config_dir, get_app_config_path as app_config_file_path, get_app_database_path,
     get_claude_mcp_path, get_claude_settings_path, read_json_file,
 };
-pub use database::{AutotierDecisionRow, AutotierRoutingConfigDto, Database, Profile};
+pub use database::{
+    AutotierDecisionRow, AutotierProviderSlotDto, AutotierRoutingConfigDto, Database, Profile,
+};
 pub use deeplink::{import_provider_from_deeplink, parse_deeplink_url, DeepLinkImportRequest};
 pub use error::AppError;
 pub use grok_config::get_grok_config_path;
@@ -527,7 +529,10 @@ pub fn run() {
 
             // 初始化数据库
             let app_config_dir = crate::config::get_app_config_dir();
-        let db_path = crate::config::get_app_database_path();
+            if let Err(e) = crate::commands::apply_pending_legacy_import() {
+                log::error!("Failed to apply pending legacy database import: {e}");
+            }
+            let db_path = crate::config::get_app_database_path();
             let json_path = app_config_dir.join("config.json");
 
             // 检查是否需要从 config.json 迁移到 SQLite

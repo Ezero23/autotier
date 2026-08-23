@@ -293,7 +293,7 @@ fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, b
     };
     let decision_id = uuid::Uuid::new_v4().to_string();
     let initial_selected_provider = ctx.provider.id.clone();
-    let (row, _) = crate::autotier::build_shadow_row(
+    let (mut row, _) = crate::autotier::build_shadow_row(
         &crate::autotier::ShadowInput {
             decision_id: decision_id.clone(),
             app_type: ctx.app_type.clone(),
@@ -305,6 +305,25 @@ fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, b
         &autotier_config,
         &secret,
     );
+    if let Some(slot_name) = row.recommended_slot.as_deref() {
+        match state
+            .db
+            .autotier_get_slot(&initial_selected_provider, slot_name)
+        {
+            Ok(Some(slot)) if !slot.model_id.trim().is_empty() => {
+                row.candidate_provider = Some(initial_selected_provider.clone());
+                row.candidate_model = Some(slot.model_id);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log::warn!(
+                    "[AutoTier] candidate slot lookup failed for provider={} slot={}: {e}",
+                    initial_selected_provider,
+                    slot_name
+                );
+            }
+        }
+    }
     crate::autotier::enqueue_create(state.db.clone(), row);
     ctx.autotier = Some(super::handler_context::AutotierRequestState {
         decision_id,
