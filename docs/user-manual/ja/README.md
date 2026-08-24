@@ -106,13 +106,13 @@ AutoTier ユーザーマニュアル
 
 ## バージョン情報
 
-- ドキュメントバージョン：v0.1.4
+- ドキュメントバージョン：v0.1.5
 - 最終更新：2026-08-24
-- AutoTier v0.1.4+ 対応
+- AutoTier v0.1.5+ 対応
 
 ### 現行バージョンの機能
 
-- **AutoTier Shadow ルーティング**：Off / Shadow 観測、候補スロット解決、copy-only legacy インポート、任意の画像アシスタント — 詳細は [v0.1.4 リリースノート](../../release-notes/v0.1.4-en.md)
+- **AutoTier Shadow ルーティング**：Off / Shadow 観測、候補スロット解決、copy-only legacy インポート、任意の画像アシスタント — 詳細は [v0.1.5 リリースノート](../../release-notes/v0.1.5-en.md)
 - **Codex Chat Completions ルーティング**：DeepSeek、Kimi、GLM、MiniMax など Chat 専用プロバイダーを Codex で利用可能 — 詳細は [2.1 プロバイダーの追加](./2-providers/2.1-add.md)
 - **管理対象 CLI ツールのライフサイクル**：設定 / About で Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes のインストール、更新、一括更新、診断に対応 — 詳細は [1.5 個人設定](./1-getting-started/1.5-settings.md)
 - **プロバイダーとモデルマトリクス更新**：提携プリセットを追加し、既定モデルと価格表を更新。Claude Opus は 4.8、該当する GPT 既定値は 5.5 に更新

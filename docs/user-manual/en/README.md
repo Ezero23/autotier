@@ -106,13 +106,13 @@ AutoTier User Manual
 
 ## Version Information
 
-- Documentation version: v0.1.4
+- Documentation version: v0.1.5
 - Last updated: 2026-08-24
-- Applicable to AutoTier v0.1.4+
+- Applicable to AutoTier v0.1.5+
 
 ### Current Version Capabilities
 
-- **AutoTier Shadow routing**: Off / Shadow observation, candidate slot resolution, copy-only legacy import, and optional vision copilot. See [v0.1.4 release notes](../../release-notes/v0.1.4-en.md)
+- **AutoTier Shadow routing**: Off / Shadow observation, candidate slot resolution, copy-only legacy import, and optional vision copilot. See [v0.1.5 release notes](../../release-notes/v0.1.5-en.md)
 - **Codex Chat Completions routing**: route Chat-only providers such as DeepSeek, Kimi, GLM, and MiniMax through Codex. See [2.1 Add Provider](./2-providers/2.1-add.md)
 - **Managed CLI tool lifecycle**: install, update, update all, and diagnose Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes from Settings / About. See [1.5 Personalization](./1-getting-started/1.5-settings.md)
 - **Provider and model refresh**: new partner presets, refreshed default models and pricing, Claude Opus 4.8 defaults, and GPT 5.5 defaults where applicable

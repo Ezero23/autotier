@@ -106,13 +106,13 @@
 
 ## 版本信息
 
-- 文档版本：v0.1.4
+- 文档版本：v0.1.5
 - 最后更新：2026-08-24
-- 适用于 AutoTier v0.1.4+
+- 适用于 AutoTier v0.1.5+
 
 ### 当前版本能力
 
-- **AutoTier Shadow 路由**：Off / Shadow 观测、候选槽位解析、copy-only legacy 导入、可选图片助手 — 详见 [v0.1.4 发行说明](../../release-notes/v0.1.4-zh.md)
+- **AutoTier Shadow 路由**：Off / Shadow 观测、候选槽位解析、copy-only legacy 导入、可选图片助手 — 详见 [v0.1.5 发行说明](../../release-notes/v0.1.5-zh.md)
 - **Codex Chat Completions 路由**：DeepSeek、Kimi、GLM、MiniMax 等仅支持 Chat 协议的供应商可通过 Codex 使用 — 详见 [2.1 添加供应商](./2-providers/2.1-add.md)
 - **托管 CLI 工具生命周期**：在设置 / 关于页安装、升级、全部升级并诊断 Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes — 详见 [1.5 个性化配置](./1-getting-started/1.5-settings.md)
 - **供应商与模型矩阵刷新**：新增合作方预设，刷新默认模型与计费矩阵，Claude Opus 默认升级到 4.8，适用场景下 GPT 默认升级到 5.5

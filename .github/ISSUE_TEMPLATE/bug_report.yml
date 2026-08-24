@@ -24,7 +24,7 @@ body:
       description: |
         See the Settings page in the app.
         查看应用设置页面中的版本号。
-      placeholder: "e.g. 0.1.4"
+      placeholder: "e.g. 0.1.5"
     validations:
       required: true
 

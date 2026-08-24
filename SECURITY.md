@@ -23,9 +23,9 @@ It does, however, run a **local HTTP proxy** whose listen address and port are u
 
 ### The bundled renderer is inside the trust boundary / 打包的渲染进程属于信任边界之内
 
-The bundled WebView renderer is treated as a trusted component. This is a **scoping decision, supported by the facts below rather than derived from them** — the facts are what make the decision checkable, and if any ceases to hold the decision must be revisited. Verified against v0.1.4:
+The bundled WebView renderer is treated as a trusted component. This is a **scoping decision, supported by the facts below rather than derived from them** — the facts are what make the decision checkable, and if any ceases to hold the decision must be revisited. Verified against v0.1.5:
 
-打包的 WebView 渲染进程被视为可信组件。这是一项**范围划定决策，由下列事实支撑，而非从中必然推出**——这些事实的作用是让该决策可被核验；一旦任一条不再成立，该决策必须重新评估。已针对 v0.1.4 核实：
+打包的 WebView 渲染进程被视为可信组件。这是一项**范围划定决策，由下列事实支撑，而非从中必然推出**——这些事实的作用是让该决策可被核验；一旦任一条不再成立，该决策必须重新评估。已针对 v0.1.5 核实：
 
 1. **No remote executable content is loaded.** `frontendDist` is bundled at build time (`src-tauri/tauri.conf.json`); the codebase contains no `<iframe>`, no `<webview>`, and no remote script or stylesheet URL. The application *does* retrieve remote **data** — model pricing JSON and provider avatars — which CSP permits via `connect-src`/`img-src`; such data is treated as untrusted input, not as content.
    前端资源在构建期打包，代码库中不存在 `<iframe>`、`<webview>` 或远程脚本/样式地址。应用**确实**会获取远程**数据**（模型定价 JSON、供应商头像），CSP 经 `connect-src`/`img-src` 允许之；此类数据按不可信输入对待，不作为内容。

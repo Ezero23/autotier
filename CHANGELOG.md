@@ -5,7 +5,9 @@ All notable changes to AutoTier (and its CC Switch upstream base) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.5] - 2026-08-24
+
+Identity follow-up on v0.1.4: AutoTier menubar icon and remaining product-name cleanup.
 
 ### Changed
 
@@ -17,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Copy-only import from legacy `~/.cc-switch`, localStorage/catalog/protocol aliases, and partner affiliate URL parameters
 
+See [v0.1.5 release notes](docs/release-notes/v0.1.5-en.md).
 
+## [0.1.4] - 2026-08-24
 
 Patch over v0.1.3: complete Shadow candidate resolution, keep legacy import reachable after first launch, and add an opt-in vision copilot.
 
