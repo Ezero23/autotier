@@ -139,6 +139,9 @@ export interface AutotierDecisionLabelRecord {
 export interface AutotierDecisionDetail
   extends Omit<AutotierDecisionListItem, "user_label"> {
   autotier_mutated_request: boolean;
+  vision_fallback_applied?: boolean;
+  vision_describe_input_tokens?: number | null;
+  vision_describe_output_tokens?: number | null;
   upstream_message_id: string | null;
   usage_request_id: string | null;
   reason_codes_json: string;
@@ -271,6 +274,9 @@ export interface AutotierRoutingConfig {
   cost_model_version: string;
   cache_stats_version: string;
   updated_at: number;
+  vision_copilot_enabled?: boolean;
+  vision_copilot_model?: string;
+  vision_text_only_models?: string[];
   degraded_from: string | null;
 }
 
@@ -278,6 +284,9 @@ export interface AutotierSaveConfigInput {
   mode: AutotierModeV01;
   advisory_candidate: "cheap" | "mid" | "strong" | null;
   retention_days: AutotierRetentionDays;
+  vision_copilot_enabled?: boolean;
+  vision_copilot_model?: string;
+  vision_text_only_models?: string[];
 }
 
 export interface AutotierProviderSlot {

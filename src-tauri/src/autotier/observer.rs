@@ -146,6 +146,9 @@ pub fn build_shadow_row(
         actual_outbound_provider: decision.actual_outbound.actual_outbound_provider.clone(),
 
         autotier_mutated_request: false,
+        vision_fallback_applied: false,
+        vision_describe_input_tokens: None,
+        vision_describe_output_tokens: None,
 
         upstream_message_id: None,
         usage_request_id: None,

@@ -30,6 +30,9 @@ pub struct AutotierRequestState {
     pub decision_id: String,
     /// Provider Router 首次选中的 Provider，与 Failover 后的实际出站区分。
     pub initial_selected_provider: String,
+    pub vision_fallback_applied: bool,
+    pub vision_describe_input_tokens: Option<i64>,
+    pub vision_describe_output_tokens: Option<i64>,
 }
 
 /// 请求上下文
@@ -81,6 +84,7 @@ pub struct RequestContext {
     pub copilot_optimizer_config: CopilotOptimizerConfig,
     /// AutoTier Shadow 观测句柄。Off 或配置失败时为 `None`，主路径不入队。
     pub autotier: Option<AutotierRequestState>,
+    pub vision: Option<super::vision_copilot::VisionApplyResult>,
 }
 
 impl RequestContext {
@@ -185,6 +189,7 @@ impl RequestContext {
             optimizer_config,
             copilot_optimizer_config,
             autotier: None,
+            vision: None,
         })
     }
 

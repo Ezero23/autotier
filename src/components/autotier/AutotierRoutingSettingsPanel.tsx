@@ -11,7 +11,7 @@ import {
   QueryClientContext,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { Loader2, Route, Save, Trash2 } from "lucide-react";
+import { Eye, Loader2, Route, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AUTOTIER_MODES_V01,
@@ -41,7 +41,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -127,6 +129,8 @@ function AutotierRoutingSettingsPanelInner() {
   const [retentionDays, setRetentionDays] = useState<AutotierRetentionDays>(30);
   const [forcedCandidate, setForcedCandidate] =
     useState<ForcedCandidateChoice>("none");
+  const [visionCopilotEnabled, setVisionCopilotEnabled] = useState(false);
+  const [visionCopilotModel, setVisionCopilotModel] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [lastDegradedFrom, setLastDegradedFrom] = useState<string | null>(null);
 
@@ -146,6 +150,8 @@ function AutotierRoutingSettingsPanelInner() {
           : forcedChoiceFromMode(configQuery.data.mode),
     );
     setLastDegradedFrom(degraded);
+    setVisionCopilotEnabled(configQuery.data.vision_copilot_enabled ?? false);
+    setVisionCopilotModel(configQuery.data.vision_copilot_model ?? "");
   }, [configQuery.data]);
 
   const hintStatus = policyHintStatusV01();
@@ -166,6 +172,9 @@ function AutotierRoutingSettingsPanelInner() {
         mode: saveMode as AutotierSaveConfigInput["mode"],
         advisory_candidate: advisoryCandidateFromChoice(forcedCandidate),
         retention_days: retentionDays,
+        vision_copilot_enabled: visionCopilotEnabled,
+        vision_copilot_model: visionCopilotModel,
+        vision_text_only_models: [],
       });
       setLastDegradedFrom(saved.degraded_from);
       toast.success(t("autotier.routing.saveSuccess"));
@@ -346,6 +355,56 @@ function AutotierRoutingSettingsPanelInner() {
               <p className="text-sm text-muted-foreground">
                 {t("autotier.routing.retentionDescription")}
               </p>
+            </div>
+
+            <div className="space-y-3 rounded-md border border-border-default p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-start gap-2">
+                  <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <div>
+                    <Label htmlFor="autotier-vision-copilot">
+                      {t("autotier.routing.visionCopilotLabel", {
+                        defaultValue: "图片助手",
+                      })}
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t("autotier.routing.visionCopilotDescription", {
+                        defaultValue:
+                          "当前模型明确看不了图片时，先让已声明支持图片的模型转成文字，再交回当前模型回答。未知模型不自动改写。",
+                      })}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="autotier-vision-copilot"
+                  checked={visionCopilotEnabled}
+                  onCheckedChange={setVisionCopilotEnabled}
+                  aria-label={t("autotier.routing.visionCopilotLabel", {
+                    defaultValue: "图片助手",
+                  })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="autotier-vision-copilot-model">
+                  {t("autotier.routing.visionCopilotModelLabel", {
+                    defaultValue: "图片助手模型（可留空自动找）",
+                  })}
+                </Label>
+                <Input
+                  id="autotier-vision-copilot-model"
+                  value={visionCopilotModel}
+                  onChange={(event) =>
+                    setVisionCopilotModel(event.target.value)
+                  }
+                  placeholder={t(
+                    "autotier.routing.visionCopilotModelPlaceholder",
+                    {
+                      defaultValue: "留空：从供应商模型声明中自动选择",
+                    },
+                  )}
+                  disabled={!visionCopilotEnabled}
+                />
+              </div>
             </div>
 
             <fieldset

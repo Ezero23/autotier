@@ -64,7 +64,8 @@ use std::sync::Mutex;
 /// v18: AutoTier — autotier_provider_slots / autotier_routing_config /
 ///      autotier_routing_decisions / autotier_decision_labels（PRD §11）
 /// v19: AutoTier — 将 advisory candidate 从 routing mode 中独立出来
-pub(crate) const SCHEMA_VERSION: i32 = 19;
+/// v20: AutoTier — Vision Copilot 配置与描述调用留痕
+pub(crate) const SCHEMA_VERSION: i32 = 20;
 
 /// 安全地序列化 JSON，避免 unwrap panic
 pub(crate) fn to_json_string<T: Serialize>(value: &T) -> Result<String, AppError> {

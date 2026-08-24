@@ -10,7 +10,7 @@ pub mod copilot_optimizer;
 pub mod error;
 pub mod error_mapper;
 pub(crate) mod failover_switch;
-mod forwarder;
+pub(crate) mod forwarder;
 pub mod gemini_url;
 pub mod handler_config;
 pub mod handler_context;
@@ -34,6 +34,7 @@ pub mod thinking_rectifier;
 pub(crate) mod tool_media;
 pub(crate) mod types;
 pub mod usage;
+pub mod vision_copilot;
 
 // 公开导出给外部使用（commands, services等模块需要）
 #[allow(unused_imports)]

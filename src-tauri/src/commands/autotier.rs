@@ -42,6 +42,9 @@ pub struct AutotierRoutingConfigView {
     pub advisory_candidate: Option<String>,
     pub retention_days: i32,
     pub raw_prompt_opt_in: bool,
+    pub vision_copilot_enabled: bool,
+    pub vision_copilot_model: String,
+    pub vision_text_only_models: Vec<String>,
     pub classifier_version: String,
     pub feature_version: String,
     pub policy_version: String,
@@ -59,6 +62,12 @@ pub struct SaveRoutingConfigInput {
     #[serde(default)]
     pub advisory_candidate: Option<String>,
     pub retention_days: i32,
+    #[serde(default)]
+    pub vision_copilot_enabled: bool,
+    #[serde(default)]
+    pub vision_copilot_model: String,
+    #[serde(default)]
+    pub vision_text_only_models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -181,6 +190,14 @@ pub(crate) fn save_routing_config(
     config.mode = mode.to_string();
     config.advisory_candidate = advisory_candidate;
     config.retention_days = input.retention_days;
+    config.vision_copilot_enabled = input.vision_copilot_enabled;
+    config.vision_copilot_model = input.vision_copilot_model.trim().to_string();
+    config.vision_text_only_models = input
+        .vision_text_only_models
+        .into_iter()
+        .map(|model| model.trim().to_string())
+        .filter(|model| !model.is_empty())
+        .collect();
     config.raw_prompt_opt_in = false;
     config.classifier_version = CLASSIFIER_VERSION.to_string();
     config.feature_version = FEATURE_VERSION.to_string();
@@ -403,6 +420,9 @@ fn config_view(
         advisory_candidate: config.advisory_candidate,
         retention_days: config.retention_days,
         raw_prompt_opt_in: false,
+        vision_copilot_enabled: config.vision_copilot_enabled,
+        vision_copilot_model: config.vision_copilot_model,
+        vision_text_only_models: config.vision_text_only_models,
         classifier_version: config.classifier_version,
         feature_version: config.feature_version,
         policy_version: config.policy_version,
@@ -584,6 +604,9 @@ mod tests {
                 mode: "off".into(),
                 advisory_candidate: None,
                 retention_days: 14,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap();
@@ -596,6 +619,9 @@ mod tests {
                 mode: "Shadow".into(),
                 advisory_candidate: None,
                 retention_days: 30,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap();
@@ -612,6 +638,9 @@ mod tests {
                 mode: "banana".into(),
                 advisory_candidate: None,
                 retention_days: 30,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap_err();
@@ -628,6 +657,9 @@ mod tests {
                 mode: "full_live".into(),
                 advisory_candidate: None,
                 retention_days: 30,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap();
@@ -645,6 +677,9 @@ mod tests {
                 mode: "forced_mid".into(),
                 advisory_candidate: None,
                 retention_days: 30,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap();
@@ -665,6 +700,9 @@ mod tests {
                 mode: "shadow".into(),
                 advisory_candidate: Some("STRONG".into()),
                 retention_days: 30,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap();
@@ -682,6 +720,9 @@ mod tests {
                 mode: "shadow".into(),
                 advisory_candidate: Some("live".into()),
                 retention_days: 30,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap_err();
@@ -721,6 +762,9 @@ mod tests {
                 mode: "shadow".into(),
                 advisory_candidate: None,
                 retention_days: 11,
+                vision_copilot_enabled: false,
+                vision_copilot_model: String::new(),
+                vision_text_only_models: Vec::new(),
             },
         )
         .unwrap_err();

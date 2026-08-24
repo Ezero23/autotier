@@ -804,11 +804,17 @@ function AutotierDecisionsPanelInner() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">
-                      {t("autotier.decisions.safeToExecute", {
-                        defaultValue: "Safe to execute",
+                      {t("autotier.decisions.visionCopilot", {
+                        defaultValue: "图片助手",
                       })}
                     </p>
-                    <p>{detail.safe_to_execute ? "true" : "false"}</p>
+                    <p>
+                      {detail.vision_fallback_applied ? "used" : "not used"}
+                      {detail.vision_describe_input_tokens != null ||
+                      detail.vision_describe_output_tokens != null
+                        ? ` · ${detail.vision_describe_input_tokens ?? emptyValue}/${detail.vision_describe_output_tokens ?? emptyValue} tokens`
+                        : ""}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">

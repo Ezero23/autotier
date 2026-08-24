@@ -104,6 +104,87 @@ pub(crate) fn is_confirmed_text_only_model(model: &str) -> bool {
     CONFIRMED_TAILS.contains(&tail)
 }
 
+pub(crate) fn find_known_vision_model(settings: &Value) -> Option<String> {
+    const KNOWN_VISION_TAILS: &[&str] = &[
+        "glm-4.6v",
+        "glm-5.2v",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite-preview",
+        "qwen-vl",
+        "qwen2.5-vl",
+        "qwen3-vl",
+    ];
+    let mut found = None;
+    collect_model_ids(settings, &mut |candidate| {
+        let tail = candidate.rsplit('/').next().unwrap_or(candidate);
+        if KNOWN_VISION_TAILS
+            .iter()
+            .any(|known| tail.eq_ignore_ascii_case(known))
+        {
+            found = Some(candidate.to_string());
+        }
+    });
+    found
+}
+
+fn collect_model_ids(value: &Value, visit: &mut impl FnMut(&str)) {
+    match value {
+        Value::String(value) => visit(value),
+        Value::Array(items) => items.iter().for_each(|item| collect_model_ids(item, visit)),
+        Value::Object(object) => object.iter().for_each(|(key, value)| {
+            visit(key);
+            if key.eq_ignore_ascii_case("model")
+                || key.eq_ignore_ascii_case("id")
+                || key.eq_ignore_ascii_case("name")
+            {
+                if let Some(candidate) = value.as_str() {
+                    visit(candidate);
+                }
+            }
+            collect_model_ids(value, visit);
+        }),
+        _ => {}
+    }
+}
+
+pub(crate) fn find_declared_vision_model(settings: &Value) -> Option<String> {
+    [
+        settings
+            .get("modelCatalog")
+            .and_then(|catalog| catalog.get("models")),
+        settings.get("modelCatalog"),
+        settings.get("models"),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(find_declared_vision_model_in_value)
+}
+
+fn find_declared_vision_model_in_value(value: &Value) -> Option<String> {
+    if let Some(models) = value.as_array() {
+        return models.iter().find_map(|entry| {
+            explicit_image_support(entry)
+                .filter(|supported| *supported)
+                .and_then(|_| {
+                    entry
+                        .get("model")
+                        .or_else(|| entry.get("id"))
+                        .or_else(|| entry.get("name"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+        });
+    }
+
+    let object = value.as_object()?;
+    object.iter().find_map(|(key, entry)| {
+        explicit_image_support(entry)
+            .filter(|supported| *supported)
+            .map(|_| key.to_string())
+    })
+}
 fn declared_model_image_support(settings: &Value, model: &str) -> Option<bool> {
     [
         settings

@@ -480,6 +480,9 @@ impl Database {
                 advisory_candidate TEXT,
                 retention_days INTEGER NOT NULL DEFAULT 30,
                 raw_prompt_opt_in INTEGER NOT NULL DEFAULT 0,
+                vision_copilot_enabled INTEGER NOT NULL DEFAULT 0,
+                vision_copilot_model TEXT NOT NULL DEFAULT '',
+                vision_text_only_models TEXT NOT NULL DEFAULT '[]',
                 classifier_version TEXT NOT NULL,
                 feature_version TEXT NOT NULL,
                 policy_version TEXT NOT NULL,
@@ -513,6 +516,10 @@ impl Database {
                 actual_outbound_provider TEXT,
 
                 autotier_mutated_request INTEGER NOT NULL DEFAULT 0,
+
+                vision_fallback_applied INTEGER NOT NULL DEFAULT 0,
+                vision_describe_input_tokens INTEGER,
+                vision_describe_output_tokens INTEGER,
 
                 upstream_message_id TEXT,
                 usage_request_id TEXT,
@@ -757,6 +764,11 @@ impl Database {
                         );
                         Self::migrate_v18_to_v19(conn)?;
                         Self::set_user_version(conn, 19)?;
+                    }
+                    19 => {
+                        log::info!("迁移数据库从 v19 到 v20（AutoTier: 视觉副驾配置与决策字段）");
+                        Self::migrate_v19_to_v20(conn)?;
+                        Self::set_user_version(conn, 20)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1781,6 +1793,47 @@ impl Database {
         Ok(())
     }
 
+    /// v19 → v20：视觉副驾（Vision Copilot）配置与决策字段。
+    fn migrate_v19_to_v20(conn: &Connection) -> Result<(), AppError> {
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_config",
+            "vision_copilot_enabled",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_config",
+            "vision_copilot_model",
+            "TEXT NOT NULL DEFAULT ''",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_config",
+            "vision_text_only_models",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_decisions",
+            "vision_fallback_applied",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_decisions",
+            "vision_describe_input_tokens",
+            "INTEGER",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "autotier_routing_decisions",
+            "vision_describe_output_tokens",
+            "INTEGER",
+        )?;
+        Ok(())
+    }
+
     /// v17 → v18：AutoTier 表迁移
     ///
     /// 创建四张 `autotier_*` 表及索引（PRD §11）。
@@ -1865,6 +1918,10 @@ impl Database {
                 actual_outbound_provider TEXT,
 
                 autotier_mutated_request INTEGER NOT NULL DEFAULT 0,
+
+                vision_fallback_applied INTEGER NOT NULL DEFAULT 0,
+                vision_describe_input_tokens INTEGER,
+                vision_describe_output_tokens INTEGER,
 
                 upstream_message_id TEXT,
                 usage_request_id TEXT,

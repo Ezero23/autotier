@@ -180,7 +180,7 @@ async fn handle_messages_for_app(
         .await
         .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
         .to_bytes();
-    let body: Value = serde_json::from_slice(&body_bytes)
+    let mut body: Value = serde_json::from_slice(&body_bytes)
         .map_err(|e| ProxyError::Internal(format!("Failed to parse request body: {e}")))?;
 
     let mut ctx =
@@ -201,8 +201,39 @@ async fn handle_messages_for_app(
         .and_then(|s| s.as_bool())
         .unwrap_or(false);
 
-    // 转发请求
+    // Vision Copilot runs after Shadow observes the original request and before
+    // the normal forwarder. A failed description is fail-open: the original
+    // image request continues unchanged and the upstream decides what to do.
     let forwarder = ctx.create_forwarder(&state);
+    if let Ok(config) = state.db.autotier_get_config() {
+        match crate::proxy::vision_copilot::apply(
+            &mut body,
+            &ctx,
+            &forwarder,
+            &method,
+            endpoint,
+            &headers,
+            ctx.get_providers(),
+            &config,
+        )
+        .await
+        {
+            Ok(vision) => {
+                if vision.applied {
+                    if let Some(autotier) = ctx.autotier.as_mut() {
+                        autotier.vision_fallback_applied = true;
+                        autotier.vision_describe_input_tokens = vision.usage.input_tokens;
+                        autotier.vision_describe_output_tokens = vision.usage.output_tokens;
+                    }
+                }
+                ctx.vision = Some(vision);
+            }
+            Err(error) => {
+                log::warn!("[AutoTier] Vision Copilot skipped after assistant failure: {error}");
+            }
+        }
+    }
+
     let mut result = match forwarder
         .forward_with_retry(
             &app_type,
@@ -328,6 +359,9 @@ fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, b
     ctx.autotier = Some(super::handler_context::AutotierRequestState {
         decision_id,
         initial_selected_provider,
+        vision_fallback_applied: false,
+        vision_describe_input_tokens: None,
+        vision_describe_output_tokens: None,
     });
 }
 
@@ -372,6 +406,9 @@ fn enqueue_autotier_finalize(
             baseline_outbound_provider: outbound_provider.clone(),
             actual_outbound_model: outbound_model,
             actual_outbound_provider: outbound_provider,
+            vision_fallback_applied: Some(autotier.vision_fallback_applied),
+            vision_describe_input_tokens: autotier.vision_describe_input_tokens,
+            vision_describe_output_tokens: autotier.vision_describe_output_tokens,
             status_code,
             outcome: Some(outcome.to_string()),
             fallback_count,
