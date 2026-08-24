@@ -21,7 +21,7 @@ pub(crate) struct PiAgentsFileSnapshot {
     pub revision: String,
 }
 
-/// Coordinates every CC Switch read-modify-write operation on Pi's AGENTS.md.
+/// Coordinates every AutoTier read-modify-write operation on Pi's AGENTS.md.
 ///
 /// Keeping the guard alive across the database update lets callers compare the
 /// file revision immediately before an atomic replacement and roll back their

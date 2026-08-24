@@ -108,7 +108,7 @@ fn register_db_change_hook(conn: &Connection) {
 impl Database {
     /// 初始化数据库连接并创建表
     ///
-    /// 数据库文件位于 `~/.autotier/autotier.db`（legacy 回退时为 `~/.cc-switch/cc-switch.db`）
+    /// 数据库文件位于 `~/.autotier/autotier.db`。legacy `~/.cc-switch` 只走显式导入，不是运行时回退。
     pub fn init() -> Result<Self, AppError> {
         let db_path = get_app_database_path();
         let db_exists = db_path.exists();

@@ -56,7 +56,7 @@ pub(crate) const CODEX_WEB_SEARCH_FIELD: &str = "web_search";
 /// Value that disables the web-search tool. Some native `/responses` gateways
 /// reject a `web_search` tool with `responses_feature_not_supported` ("tool type
 /// 'web_search' is not supported by this gateway phase"), so for those we write
-/// this per the vendors' official Codex docs. Also doubles as cc-switch's
+/// this per the vendors' official Codex docs. Also doubles as AutoTier's
 /// ownership sentinel: we only ever remove a `web_search` key whose value equals
 /// this string, never a user's own setting.
 pub(crate) const CODEX_WEB_SEARCH_DISABLED: &str = "disabled";
@@ -195,7 +195,7 @@ impl CodexLiveFileState {
     }
 }
 
-/// Rollback point for the cc-switch-owned model catalog. Catalog projection
+/// Rollback point for the AutoTier-owned model catalog. Catalog projection
 /// writes this file before the caller commits `config.toml`, so guarded restore
 /// paths use this snapshot when a concurrently changing `auth.json` cancels the
 /// commit.
@@ -317,7 +317,7 @@ impl CodexLiveStateSnapshot {
 
 /// Which Codex tool surface the generated model catalog should target.
 ///
-/// - `ProxyChat`: cc-switch's proxy takes over and converts Responses<->Chat,
+/// - `ProxyChat`: AutoTier's proxy takes over and converts Responses<->Chat,
 ///   so the catalog keeps Codex's default tool set (incl. the freeform
 ///   `apply_patch` custom tool, which the proxy rewrites to a function tool).
 /// - `NativeResponses`: Codex talks directly to a provider's native
@@ -328,7 +328,7 @@ impl CodexLiveStateSnapshot {
 pub enum CodexCatalogToolProfile {
     ProxyChat,
     NativeResponses,
-    /// Codex talks (through cc-switch's proxy) to a native Anthropic Messages
+    /// Codex talks (through AutoTier's proxy) to a native Anthropic Messages
     /// gateway. Like `NativeResponses` it must suppress Codex's freeform custom
     /// tools — the Responses→Anthropic transform keeps only `function` tools.
     /// Additionally the Codex `web_search` hosted tool is unusable on this path
@@ -444,7 +444,7 @@ fn extract_codex_managed_oauth_account_id(auth: &Value) -> Option<String> {
     Some(account_id.to_string())
 }
 
-/// Build the native-shaped ChatGPT auth bundle shared by cc-switch and Codex CLI.
+/// Build the native-shaped ChatGPT auth bundle shared by AutoTier and Codex CLI.
 pub fn codex_managed_oauth_auth_value(
     account_id: &str,
     access_token: &str,
@@ -702,7 +702,7 @@ pub fn read_codex_live_auth_refresh_for_account(
 ///
 /// The write is compare-and-swap-like: immediately before replacing auth.json,
 /// it verifies that the file still contains the refresh token used for the
-/// network request. Codex CLI does not share cc-switch's process lock, so this
+/// network request. Codex CLI does not share AutoTier's process lock, so this
 /// is a best-effort guard that narrows (but cannot make atomic) the cross-process
 /// check-to-replace window.
 /// Ownership is account-scoped: a file recorded for the same managed account
@@ -1677,7 +1677,7 @@ fn load_codex_native_responses_template() -> Value {
 }
 
 /// Hosts whose native `/responses` gateway publishes an OFFICIAL Codex model
-/// catalog (models.json) that cc-switch mirrors verbatim. Matched against
+/// catalog (models.json) that AutoTier mirrors verbatim. Matched against
 /// `base_url` ONLY — deliberately NOT by model brand, unlike
 /// `CODEX_WEB_SEARCH_REJECT_MODEL_PREFIXES`: the official entries GRANT
 /// capabilities (freeform `apply_patch`, vendor harness), and an aggregator
@@ -1705,7 +1705,7 @@ fn load_codex_deepseek_official_catalog_models() -> Vec<Value> {
 
 /// Official vendor catalog entries for the provider in `config_text`, if its
 /// gateway ships one. Only the `NativeResponses` profile qualifies: ProxyChat
-/// runs through cc-switch's converter (gpt-5.5 template contract) and the
+/// runs through AutoTier's converter (gpt-5.5 template contract) and the
 /// Anthropic transform drops custom tools, so both must keep their existing
 /// templates. Host-driven like the web_search blacklist, so existing providers
 /// pick it up on their next switch without a re-save.
@@ -1983,12 +1983,12 @@ fn set_codex_model_catalog_json_field(
 /// web-search tool off. When `disable` is true we write `web_search = "disabled"`
 /// (the catalog's `supports_search_tool` does NOT gate this — the request-time
 /// tool comes from the config, defaulting on). When false we *remove* the field,
-/// but only when it carries cc-switch's own `"disabled"` sentinel, so switching
+/// but only when it carries AutoTier's own `"disabled"` sentinel, so switching
 /// back to a web-search-capable provider re-enables it without clobbering a
 /// user's manual setting.
 ///
 /// The caller decides `disable` (see `codex_native_gateway_rejects_web_search`);
-/// lifecycle is bound to the cc-switch catalog pointer so the field is set/cleaned
+/// lifecycle is bound to the AutoTier catalog pointer so the field is set/cleaned
 /// up wherever the native catalog is written/removed.
 fn set_codex_native_web_search_field(config_text: &str, disable: bool) -> Result<String, AppError> {
     let mut doc = config_text
@@ -5318,9 +5318,9 @@ model = "glm-5"
 
     #[test]
     fn set_catalog_json_some_preserves_user_owned_catalog() {
-        // When CC Switch generates a catalog (Some arm), it must still respect a
+        // When AutoTier generates a catalog (Some arm), it must still respect a
         // user-managed external catalog file instead of clobbering it with the
-        // cc-switch-owned filename. Only an absent or cc-switch-owned pointer is
+        // AutoTier-owned filename. Only an absent or AutoTier/legacy-owned pointer is
         // claimed; this mirrors the None arm's ownership rule.
         let input = r#"model_provider = "custom"
 model = "glm-5"
