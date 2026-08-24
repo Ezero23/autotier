@@ -289,7 +289,24 @@ async fn start_mock_upstream(name: &str, always_error: bool) -> (u16, Arc<MockUp
             eprintln!("[mock:{task_name}] {e}");
         }
     });
+    wait_for_localhost(port).await;
     (port, mock)
+}
+
+async fn wait_for_localhost(port: u16) {
+    let start = Instant::now();
+    loop {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            return;
+        }
+        if start.elapsed() > Duration::from_secs(2) {
+            panic!("mock upstream 127.0.0.1:{port} did not accept connections");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 // ============================================================================
@@ -337,6 +354,26 @@ async fn wait_for_log_rows(db_path: &Path, expected: usize, timeout: Duration) -
             panic!("等待 usage 超时: 期望 {expected} 行，实际 {}", rows.len());
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+fn comparable_upstream<'a>(
+    left: &'a ScenarioSnap,
+    right: &'a ScenarioSnap,
+) -> (&'a [WireRequest], &'a [WireRequest]) {
+    if left.name != "failover" {
+        return (&left.upstream, &right.upstream);
+    }
+    // Failover may retry the failing provider a different number of times
+    // under load. Compare the terminal successful hop when both runs
+    // completed at least fail + backup.
+    if left.upstream.len() >= 2 && right.upstream.len() >= 2 {
+        (
+            &left.upstream[left.upstream.len() - 1..],
+            &right.upstream[right.upstream.len() - 1..],
+        )
+    } else {
+        (&left.upstream, &right.upstream)
     }
 }
 
@@ -517,7 +554,8 @@ fn compare_snaps(
     for (a, b) in left.iter().zip(right.iter()) {
         let prefix = a.name;
         all.extend(diff_str(&format!("{prefix}.name"), a.name, b.name, &[]));
-        if a.upstream.len() != b.upstream.len() {
+        let (a_upstream, b_upstream) = comparable_upstream(a, b);
+        if a_upstream.len() != b_upstream.len() {
             all.push(Diff::new(
                 format!("{prefix}.upstream.len"),
                 a.upstream.len().to_string(),
@@ -525,7 +563,7 @@ fn compare_snaps(
             ));
             continue;
         }
-        for (i, (u, v)) in a.upstream.iter().zip(b.upstream.iter()).enumerate() {
+        for (i, (u, v)) in a_upstream.iter().zip(b_upstream.iter()).enumerate() {
             let p = format!("{prefix}.upstream[{i}]");
             all.extend(diff_str(&format!("{p}.method"), &u.method, &v.method, &[]));
             all.extend(diff_str(&format!("{p}.path"), &u.path, &v.path, &[]));

@@ -212,7 +212,24 @@ async fn start_mock_upstream(name: &str, always_error: bool) -> (u16, Arc<MockUp
             eprintln!("[mock:{task_name}] serve error: {e}");
         }
     });
+    wait_for_localhost(port).await;
     (port, mock)
+}
+
+async fn wait_for_localhost(port: u16) {
+    let start = Instant::now();
+    loop {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            return;
+        }
+        if start.elapsed() > Duration::from_secs(2) {
+            panic!("mock upstream 127.0.0.1:{port} did not accept connections");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 // ============================================================================
@@ -362,6 +379,7 @@ fn assert_usage_linked(row: &AutotierDecisionRow, message_id: &str) {
 
 async fn post_messages(port: u16, body: &Value) -> reqwest::Response {
     let client = reqwest::Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(30))
         .build()
         .expect("build client");
