@@ -198,6 +198,10 @@ describe("AutotierRoutingSettingsPanel", () => {
     expect(screen.getByTestId("autotier-canary-gate")).toHaveTextContent(
       /Not met/i,
     );
+    expect(screen.getByLabelText("Vision copilot")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Unknown models are never rewritten automatically/i),
+    ).toBeInTheDocument();
   });
 
   it("shows forced candidate advisory and does not execute Live routing", async () => {

@@ -51,6 +51,12 @@ export const autotierTranslations = {
       retentionDescription:
         "Shadow decisions older than this window can be pruned. Allowed values: 7, 14, 30, or 90 days.",
       retentionDays: "{{days}} days",
+      visionCopilotLabel: "Vision copilot",
+      visionCopilotDescription:
+        "When the current model is explicitly text-only, describe images with a declared vision model first, then send the text back to the current model. Unknown models are never rewritten automatically.",
+      visionCopilotModelLabel: "Vision copilot model (optional)",
+      visionCopilotModelPlaceholder:
+        "Leave empty to pick from the provider's declared vision models",
       forcedCandidateTitle: "Forced candidate slot (debug)",
       forcedCandidateDescription:
         "Override the displayed candidate tier for measurement only. This never changes actual outbound routing.",
@@ -144,6 +150,10 @@ export const autotierTranslations = {
       complexity: "Complexity",
       confidence: "Confidence",
       costRange: "Candidate cost (Low / Base / High USD)",
+      mutatedRequest: "AutoTier mutated request",
+      visionCopilot: "Vision copilot",
+      visionCopilotUsed: "used",
+      visionCopilotNotUsed: "not used",
       reasonCodes: "Reason codes",
       unsafeReasons: "Unsafe reasons",
       incompleteTitle: "Incomplete fields",
@@ -247,6 +257,11 @@ export const autotierTranslations = {
       retentionDescription:
         "超过此窗口的 Shadow 决策可被修剪。允许值：7、14、30 或 90 天。",
       retentionDays: "{{days}} 天",
+      visionCopilotLabel: "图片助手",
+      visionCopilotDescription:
+        "当前模型明确看不了图片时，先让已声明支持图片的模型转成文字，再交回当前模型回答。未知模型不自动改写。",
+      visionCopilotModelLabel: "图片助手模型（可留空自动找）",
+      visionCopilotModelPlaceholder: "留空：从供应商模型声明中自动选择",
       forcedCandidateTitle: "强制候选槽位（调试）",
       forcedCandidateDescription:
         "仅覆盖展示的候选档位用于测量，永远不会改变实际出站路由。",
@@ -339,6 +354,10 @@ export const autotierTranslations = {
       complexity: "复杂度",
       confidence: "置信度",
       costRange: "候选成本（低/基准/高 USD）",
+      mutatedRequest: "AutoTier 是否改写请求",
+      visionCopilot: "图片助手",
+      visionCopilotUsed: "已使用",
+      visionCopilotNotUsed: "未使用",
       reasonCodes: "原因码",
       unsafeReasons: "不安全原因",
       incompleteTitle: "缺失字段",
@@ -444,6 +463,12 @@ export const autotierTranslations = {
       retentionDescription:
         "この期間より古い Shadow Decision は整理できます。許可値: 7 / 14 / 30 / 90 日。",
       retentionDays: "{{days}} 日",
+      visionCopilotLabel: "画像アシスタント",
+      visionCopilotDescription:
+        "現在のモデルが画像非対応と明示されている場合、対応モデルで画像をテキスト化し、元のモデルへ戻します。未知のモデルは自動では書き換えません。",
+      visionCopilotModelLabel: "画像アシスタントのモデル（空欄で自動選択）",
+      visionCopilotModelPlaceholder:
+        "空欄：プロバイダの画像対応モデルから自動選択",
       forcedCandidateTitle: "強制候補スロット（デバッグ）",
       forcedCandidateDescription:
         "表示候補ティアのみ上書きします。実際の outbound ルーティングは変更しません。",
@@ -537,6 +562,10 @@ export const autotierTranslations = {
       complexity: "複雑度",
       confidence: "信頼度",
       costRange: "候補コスト（Low / Base / High USD）",
+      mutatedRequest: "AutoTier がリクエストを改変",
+      visionCopilot: "画像アシスタント",
+      visionCopilotUsed: "使用済み",
+      visionCopilotNotUsed: "未使用",
       reasonCodes: "Reason Code",
       unsafeReasons: "Unsafe Reason",
       incompleteTitle: "未完了フィールド",
@@ -640,6 +669,11 @@ export const autotierTranslations = {
       retentionDescription:
         "超過此視窗的 Shadow 決策可被修剪。允許值：7、14、30 或 90 天。",
       retentionDays: "{{days}} 天",
+      visionCopilotLabel: "圖片助手",
+      visionCopilotDescription:
+        "目前模型明確看不了圖片時，先讓已宣告支援圖片的模型轉成文字，再交回目前模型回答。未知模型不自動改寫。",
+      visionCopilotModelLabel: "圖片助手模型（可留空自動找）",
+      visionCopilotModelPlaceholder: "留空：從供應商模型宣告中自動選擇",
       forcedCandidateTitle: "強制候選槽位（偵錯）",
       forcedCandidateDescription:
         "僅覆寫顯示的候選檔位供測量使用，永遠不會改變實際出站路由。",
@@ -732,6 +766,10 @@ export const autotierTranslations = {
       complexity: "複雜度",
       confidence: "置信度",
       costRange: "候選成本（低/基準/高 USD）",
+      mutatedRequest: "AutoTier 是否改寫請求",
+      visionCopilot: "圖片助手",
+      visionCopilotUsed: "已使用",
+      visionCopilotNotUsed: "未使用",
       reasonCodes: "原因碼",
       unsafeReasons: "不安全原因",
       incompleteTitle: "缺失欄位",

@@ -13,9 +13,9 @@ AutoTier 构建于 `farion1231/cc-switch` 之上，保留完整上游历史：
 origin   = https://github.com/Ezero23/autotier.git
 upstream = https://github.com/farion1231/cc-switch.git
 base commit       = 30409878bdbdf1c7091c559d6afc367a052da39c
-package version   = 0.1.3
-git describe      = v0.1.3
-release            = AutoTier v0.1.3 (2026-08-22)
+package version   = 0.1.4
+git describe      = v0.1.4
+release            = AutoTier v0.1.4 (2026-08-24)
 ```
 
 - 上游 README 原样保留在 [`README.upstream.md`](./README.upstream.md);MIT License 与 attribution 未改动
@@ -23,7 +23,7 @@ release            = AutoTier v0.1.3 (2026-08-22)
 
 ## 当前状态
 
-**AutoTier v0.1.3（Shadow 观测）** — v0.1.3 已合入 `main` 并完成更新入口修复。
+**AutoTier v0.1.4（Shadow 观测）** — 候选槽位解析、legacy 导入入口与可选图片助手。
 
 v0.1 只做 Shadow 观测：生成可解释的候选路由决策与成本区间，**不修改任何真实出站模型或 Provider**。阻断级不变量（AMEND-001 第 2 节）:
 
@@ -39,14 +39,15 @@ actual_outbound_provider == baseline_outbound_provider
 |---|---|
 | 路由模式 | Off / Shadow（默认 Shadow 只观测） |
 | Provider Slots | 四语义槽位配置 + Shadow 说明 |
-| 决策观测 | 列表 / 详情 / 标注 / 分页 / 筛选 |
+| 决策观测 | 列表 / 详情 / 标注 / 分页 / 筛选；候选 Provider/模型从已保存槽位解析 |
+| 图片助手 | 可选、默认关闭：主模型明确不看图时先转成文字再回答；失败则原样转发 |
 | 数据工具 | 隐私安全导出、Replay、Holdout Eval |
-| 数据目录 | 默认 `~/.autotier`；legacy `~/.cc-switch` 只读回退 + 一键导入 |
+| 数据目录 | 默认 `~/.autotier`；legacy `~/.cc-switch` 只读回退 + 一键导入（首次启动后仍可见） |
 | 产品身份 | `AutoTier` / `com.ezero.autotier` / `autotier-theme` |
 
 ### 发版与验收
 
-- Release Notes：`docs/release-notes/v0.1.0-zh.md` / `v0.1.0-en.md`（v0.1 系列说明）
+- Release Notes：`docs/release-notes/v0.1.4-zh.md` / `v0.1.4-en.md`（当前版本）；v0.1 系列首发见 `v0.1.0-zh.md` / `v0.1.0-en.md`
 - 全新安装 E2E 清单：`docs/autotier/v0.1-e2e-checklist.md`
 - v0.2+（未实现）：Policy Hint、Live Canary
 
@@ -60,7 +61,7 @@ actual_outbound_provider == baseline_outbound_provider
 | [`docs/autotier/path-map.md`](./docs/autotier/path-map.md) | 基座请求链路图：Handler → Forwarder → Usage Finalize，含 Shadow 插入点 |
 | [`docs/autotier/baseline-verification.md`](./docs/autotier/baseline-verification.md) | 构建 / Lint / 测试 / 冒烟实测结果与 Off 模式 Parity 验证方法 |
 | [`docs/autotier/v0.1-e2e-checklist.md`](./docs/autotier/v0.1-e2e-checklist.md) | v0.1 全新安装 14 步 E2E 验收清单 |
-| [`docs/release-notes/v0.1.0-zh.md`](./docs/release-notes/v0.1.0-zh.md) | v0.1.0 发行说明 |
+| [`docs/release-notes/v0.1.4-zh.md`](./docs/release-notes/v0.1.4-zh.md) | v0.1.4 发行说明 |
 
 ## 开发纪律（摘自 PRD 与 AMEND-001)
 

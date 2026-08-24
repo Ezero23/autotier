@@ -641,7 +641,7 @@ jobs:
 
             Local-first **Shadow routing observatory** — observe candidate decisions without changing outbound model or provider.
 
-            📖 Release notes: [English](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/v0.1.0-en.md) · [中文](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/v0.1.0-zh.md)
+            📖 Release notes: [English](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/${{ github.ref_name }}-en.md) · [中文](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/${{ github.ref_name }}-zh.md)
 
             ### Downloads
 
