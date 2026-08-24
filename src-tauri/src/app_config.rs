@@ -133,7 +133,7 @@ impl SkillApps {
             AppType::Hermes => self.hermes = enabled,
             AppType::Pi => self.pi = enabled,
             AppType::OpenClaw => {} // OpenClaw doesn't support Skills, ignore
-            AppType::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use CC Switch skill sync
+            AppType::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use AutoTier skill sync
         }
     }
 
@@ -185,7 +185,7 @@ impl SkillApps {
     /// 从来源标签列表构建启用状态
     ///
     /// 标签与 AppType::as_str() 一致时启用对应应用，
-    /// 其他标签（如 "agents", "cc-switch"）忽略。
+    /// 其他标签（如 "agents" 或遗留的 "cc-switch"）忽略。
     pub fn from_labels(labels: &[String]) -> Self {
         let mut apps = Self::default();
         for label in labels {
@@ -234,7 +234,7 @@ pub struct InstalledSkill {
     pub updated_at: i64,
 }
 
-/// 未管理的 Skill（在应用目录中发现但未被 CC Switch 管理）
+/// 未管理的 Skill（在应用目录中发现但未被 AutoTier 管理）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnmanagedSkill {

@@ -49,7 +49,7 @@ Pi 不建立独立设计系统。交互参考顺序如下：
 
 供应商页面采用统一结构：
 
-1. CC Switch 中保存的供应商列表。
+1. AutoTier 中保存的供应商列表。
 2. 页面右上角唯一的“+”添加入口。
 
 供应商卡片不展示模型列表。模型只在添加或编辑表单中配置，避免卡片高度失控和信息重复。
@@ -57,17 +57,17 @@ Pi 不建立独立设计系统。交互参考顺序如下：
 列表中的常规操作沿用家族组件：
 
 - 启用：把供应商加入 Pi 原生配置。
-- 移除：从 Pi 原生配置移除，但保留 CC Switch 中的供应商。
+- 移除：从 Pi 原生配置移除，但保留 AutoTier 中的供应商。
 - 编辑：修改供应商配置。
-- 删除：删除 CC Switch 中的供应商。
+- 删除：删除 AutoTier 中的供应商。
 - 复制、连通性检测和用量配置继续使用现有上下文操作，不增加第二个主入口。
 - 不提供“导入当前原生供应商”等第二个添加入口；需要托管的供应商统一从右上角“+”创建。
 
-供应商标识是成员身份。Pi `models.json` 中存在该标识即表示已启用，不再比较整份 JSON 来制造“漂移”或“所有权”状态。凡是显式存在于 `models.json.providers` 的供应商都应同步到供应商列表，包括与 Pi 内置供应商同名的 ID；原生修改同步回已保存档案，原生移除只改变启用状态。只存在于 `auth.json`、`/login` 或环境变量中的认证状态始终由 Pi 管理，不生成 CC Switch 卡片。详细规则见 [Pi 显式供应商同步需求](./pi-live-provider-sync-requirements-zh.md)。
+供应商标识是成员身份。Pi `models.json` 中存在该标识即表示已启用，不再比较整份 JSON 来制造“漂移”或“所有权”状态。凡是显式存在于 `models.json.providers` 的供应商都应同步到供应商列表，包括与 Pi 内置供应商同名的 ID；原生修改同步回已保存档案，原生移除只改变启用状态。只存在于 `auth.json`、`/login` 或环境变量中的认证状态始终由 Pi 管理，不生成 AutoTier 卡片。详细规则见 [Pi 显式供应商同步需求](./pi-live-provider-sync-requirements-zh.md)。
 
 ### 4.2 Pi 当前选择的安全边界
 
-CC Switch 不设置、展示或标记 Pi 的当前供应商和模型。
+AutoTier 不设置、展示或标记 Pi 的当前供应商和模型。
 
 - 当前供应商和模型完全交给 Pi 原生 `/model`。
 - 供应商页只管理供应商是否加入 Pi 原生配置，不显示“当前使用”“当前默认”、所有权或当前模型。
@@ -177,11 +177,11 @@ CC Switch 不设置、展示或标记 Pi 的当前供应商和模型。
 Pi 原生订阅登录和 OAuth 由 Pi 管理：
 
 - 用户在 Pi 中使用 `/login`。
-- CC Switch 不复制 `auth.json`，不保存或刷新 OAuth Token。
-- CC Switch 不展示一套独立的“已登录”状态，也不提供 OAuth 供应商按钮。
-- API Key 供应商由 CC Switch 管理。
+- AutoTier 不复制 `auth.json`，不保存或刷新 OAuth Token。
+- AutoTier 不展示一套独立的“已登录”状态，也不提供 OAuth 供应商按钮。
+- API Key 供应商由 AutoTier 管理。
 
-界面不得出现“CC Switch 显示已登录，但 Pi 仍使用旧凭证或旧请求路径”的半状态。
+界面不得出现“AutoTier 显示已登录，但 Pi 仍使用旧凭证或旧请求路径”的半状态。
 
 ### 4.9 路由与故障转移
 
@@ -214,7 +214,7 @@ Pi 提示词沿用 cc-switch 的列表、标签页、全屏编辑器和顶部主
 
 - 不解释就无法区分 `APPEND_SYSTEM.md` 与 `SYSTEM.md`。
 - 操作需要在已打开的 Pi 中重新加载。
-- 原生文件与 CC Switch 状态发生冲突。
+- 原生文件与 AutoTier 状态发生冲突。
 
 不要在页面上重复显示操作完成后 toast 已经说明的内容。
 
@@ -228,11 +228,11 @@ Pi Skills 复用统一 Skills 页面和已有卡片。是否被 Pi 发现必须�
 
 ### Sessions
 
-Pi Sessions 复用现有会话管理器。相对 session 目录缺少项目上下文时，应说明需要项目目录；目录不可用时显示错误。不要制造 CC Switch 专用的 Pi 会话格式。
+Pi Sessions 复用现有会话管理器。相对 session 目录缺少项目上下文时，应说明需要项目目录；目录不可用时显示错误。不要制造 AutoTier 专用的 Pi 会话格式。
 
 ### Extensions 与 Themes
 
-Pi Packages、Extensions 与 Themes 由 Pi 原生管理，当前不进入 CC Switch 产品界面。CC Switch 不复制扩展文件，也不维护第二套安装、启用或更新状态。
+Pi Packages、Extensions 与 Themes 由 Pi 原生管理，当前不进入 AutoTier 产品界面。AutoTier 不复制扩展文件，也不维护第二套安装、启用或更新状态。
 
 ## 7. 文案与视觉规范
 
@@ -259,10 +259,10 @@ Pi Packages、Extensions 与 Themes 由 Pi 原生管理，当前不进入 CC Swi
 
 1. 这是开发时最新 Pi 已验证的原生能力吗？
 2. 它是创建或日常管理中常见、必要的字段吗？
-3. 这项操作属于 CC Switch，还是应该交给 Pi 的 `/login`、`/model` 等原生命令？
+3. 这项操作属于 AutoTier，还是应该交给 Pi 的 `/login`、`/model` 等原生命令？
 4. 后端能稳定读取、写入并无损往返吗？
 
-四项都满足才进入默认界面。Pi 原生但罕见的字段优先透传；需要专业用户偶尔修改的字段可以进入渐进区域；不属于 CC Switch 或缺少可靠后端支持的能力不进入 UI。
+四项都满足才进入默认界面。Pi 原生但罕见的字段优先透传；需要专业用户偶尔修改的字段可以进入渐进区域；不属于 AutoTier 或缺少可靠后端支持的能力不进入 UI。
 
 参考 OpenCode 或 Hermes 时只复用相同问题的成熟交互。不能因为另一个应用有某个字段，就假设 Pi 也需要。
 
@@ -285,7 +285,7 @@ Pi Packages、Extensions 与 Themes 由 Pi 原生管理，当前不进入 CC Swi
 - 配置 JSON 与结构化字段双向同步，格式化可用，并与实际保存内容一致。
 - 已有未知字段、缺失可选字段和精确模型 ID 的无损往返。
 - Pi 供应商配置加载、错误、外部新增、修改、删除与启用状态同步。
-- Pi `/model`、`/login` 的所有权没有被 CC Switch 接管。
+- Pi `/model`、`/login` 的所有权没有被 AutoTier 接管。
 - 中、英、日、繁中术语覆盖。
 - 键盘、浅色/深色主题和常见窗口宽度。
 

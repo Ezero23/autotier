@@ -2114,7 +2114,7 @@ fn codex_proxy_error_json(
         // 413 来自上游渠道商的网关（典型是 nginx 的 client_max_body_size），不是 CC
         // Switch 本地代理的限制（本地 DefaultBodyLimit 已放到 200MB）。上游响应体往往是
         // 一整段 nginx HTML，对用户毫无价值，这里替换成明确指向上游 + 可操作的指引，
-        // 避免「以为是 CC Switch 封装了 nginx / 是本地代理的锅」这种反复出现的误解。
+        // 避免「以为是 AutoTier 封装了 nginx / 是本地代理的锅」这种反复出现的误解。
         format!(
             concat!(
                 "Upstream provider rejected the request with HTTP 413 (Payload Too Large). ",
