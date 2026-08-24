@@ -283,7 +283,7 @@ AutoTier 使用“通用配置片段”功能，在不同的供应商之间传�
 <details>
 <summary><strong>macOS 安装</strong></summary>
 
-当前 AutoTier macOS 构建未签名、未公证，正式 Release 提供 `AutoTier-v0.1.3-macOS.zip`。首次启动可能需要右键选择“打开”，或在 macOS“隐私与安全性”中手动允许。
+当前 AutoTier macOS 构建未签名、未公证，正式 Release 提供 `AutoTier-v0.1.4-macOS.zip`。首次启动可能需要右键选择“打开”，或在 macOS“隐私与安全性”中手动允许。
 
 </details>
 
@@ -369,7 +369,7 @@ AUTOTIER_GDK_BACKEND=wayland ./AutoTier-*.AppImage
 
 **手动下载**
 
-从 [Releases](https://github.com/Ezero23/autotier/releases) 页面下载 `AutoTier-v0.1.3-macOS.zip`；当前未签名版本不发布 DMG。解压得到 `AutoTier.app` 后，将其拖入“应用程序”。首次启动可能需要右键选择“打开”，或在 macOS“隐私与安全性”中手动允许。
+从 [Releases](https://github.com/Ezero23/autotier/releases) 页面下载 `AutoTier-v0.1.4-macOS.zip`；当前未签名版本不发布 DMG。解压得到 `AutoTier.app` 后，将其拖入“应用程序”。首次启动可能需要右键选择“打开”，或在 macOS“隐私与安全性”中手动允许。
 
 ### Arch Linux 用户
 

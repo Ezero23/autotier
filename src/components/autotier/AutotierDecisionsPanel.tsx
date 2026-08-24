@@ -796,20 +796,18 @@ function AutotierDecisionsPanelInner() {
                 <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <p className="text-xs text-muted-foreground">
-                      {t("autotier.decisions.mutatedRequest", {
-                        defaultValue: "AutoTier mutated request",
-                      })}
+                      {t("autotier.decisions.mutatedRequest")}
                     </p>
                     <p>{detail.autotier_mutated_request ? "true" : "false"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">
-                      {t("autotier.decisions.visionCopilot", {
-                        defaultValue: "图片助手",
-                      })}
+                      {t("autotier.decisions.visionCopilot")}
                     </p>
                     <p>
-                      {detail.vision_fallback_applied ? "used" : "not used"}
+                      {detail.vision_fallback_applied
+                        ? t("autotier.decisions.visionCopilotUsed")
+                        : t("autotier.decisions.visionCopilotNotUsed")}
                       {detail.vision_describe_input_tokens != null ||
                       detail.vision_describe_output_tokens != null
                         ? ` · ${detail.vision_describe_input_tokens ?? emptyValue}/${detail.vision_describe_output_tokens ?? emptyValue} tokens`

@@ -5,6 +5,54 @@ All notable changes to AutoTier (and its CC Switch upstream base) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-08-24
+
+Patch over v0.1.3: complete Shadow candidate resolution, keep legacy import reachable after first launch, and add an opt-in vision copilot.
+
+### Added
+
+- **Vision copilot** (off by default): when the primary model is explicitly text-only, describe image blocks with a declared vision model, then continue the original request. Fail-open on assistant errors. Does not change outbound model or provider.
+
+### Fixed
+
+- Shadow decisions now resolve `candidate_provider` / `candidate_model` from the saved slot for the recommended tier
+- Legacy CC Switch import banner stays available after a normal first launch creates `~/.autotier/autotier.db`
+- Repository metadata, CODEOWNERS, and Windows deep-link docs now point at AutoTier rather than the upstream CC Switch project
+
+### Changed
+
+- Four-locale copy for vision copilot and decision-detail mutation flags
+- Release verification script is version-aware (`package.json` drives identity checks)
+
+See [v0.1.4 release notes](docs/release-notes/v0.1.4-en.md).
+
+## [0.1.3] - 2026-08-22
+
+### Fixed
+
+- In-app updater and update links now fetch AutoTier GitHub Releases (`Ezero23/autotier`) instead of the upstream CC Switch endpoint
+- User manuals and release guidance aligned to AutoTier v0.1.3 identity and unsigned macOS zip artifacts
+
+## [0.1.2] - 2026-08-21
+
+### Changed
+
+- Refreshed AutoTier app icon and product identity assets
+- Removed leftover upstream release-note files and build caches
+- WSL2 contract tests use AutoTier branding
+
+## [0.1.1] - 2026-08-21
+
+### Changed
+
+- Completed runtime brand migration: data paths, SQL backup identity, settings, and audit surfaces use AutoTier names
+- Advisory candidate overrides are independent of routing mode (still Shadow-only, never executed)
+
+### Fixed
+
+- Pricing panel render loop
+- Cross-platform backend CI flakes and writer clippy lints
+
 ## [0.1.0] - 2026-08-20
 
 First AutoTier release: **Shadow-only** routing observatory on the CC Switch proxy base.

@@ -363,15 +363,10 @@ function AutotierRoutingSettingsPanelInner() {
                   <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <div>
                     <Label htmlFor="autotier-vision-copilot">
-                      {t("autotier.routing.visionCopilotLabel", {
-                        defaultValue: "图片助手",
-                      })}
+                      {t("autotier.routing.visionCopilotLabel")}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      {t("autotier.routing.visionCopilotDescription", {
-                        defaultValue:
-                          "当前模型明确看不了图片时，先让已声明支持图片的模型转成文字，再交回当前模型回答。未知模型不自动改写。",
-                      })}
+                      {t("autotier.routing.visionCopilotDescription")}
                     </p>
                   </div>
                 </div>
@@ -379,16 +374,12 @@ function AutotierRoutingSettingsPanelInner() {
                   id="autotier-vision-copilot"
                   checked={visionCopilotEnabled}
                   onCheckedChange={setVisionCopilotEnabled}
-                  aria-label={t("autotier.routing.visionCopilotLabel", {
-                    defaultValue: "图片助手",
-                  })}
+                  aria-label={t("autotier.routing.visionCopilotLabel")}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="autotier-vision-copilot-model">
-                  {t("autotier.routing.visionCopilotModelLabel", {
-                    defaultValue: "图片助手模型（可留空自动找）",
-                  })}
+                  {t("autotier.routing.visionCopilotModelLabel")}
                 </Label>
                 <Input
                   id="autotier-vision-copilot-model"
@@ -398,9 +389,6 @@ function AutotierRoutingSettingsPanelInner() {
                   }
                   placeholder={t(
                     "autotier.routing.visionCopilotModelPlaceholder",
-                    {
-                      defaultValue: "留空：从供应商模型声明中自动选择",
-                    },
                   )}
                   disabled={!visionCopilotEnabled}
                 />

@@ -152,8 +152,14 @@ jobs:
       - name: Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
+      - name: Compile tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-run
+
       - name: Run tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        # Integration tests share the default proxy port 15721 and HOME-backed
+        # SQLite files. Serialize binaries (--jobs 1) and tests in each binary
+        # (--test-threads=1) so macOS/Windows runners do not collide.
+        run: cargo test --manifest-path src-tauri/Cargo.toml --jobs 1 -- --test-threads=1
 
   backend-windows-wsl2:
     name: Backend Checks (Windows + WSL2 home)

@@ -209,11 +209,13 @@ async fn handle_messages_for_app(
         match crate::proxy::vision_copilot::apply(
             &mut body,
             &ctx,
-            &forwarder,
-            &method,
-            endpoint,
-            &headers,
-            ctx.get_providers(),
+            crate::proxy::vision_copilot::VisionForwardContext {
+                forwarder: &forwarder,
+                method: &method,
+                endpoint,
+                headers: &headers,
+                providers: ctx.get_providers(),
+            },
             &config,
         )
         .await

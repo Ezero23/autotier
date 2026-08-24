@@ -41,6 +41,14 @@ pub struct VisionApplyResult {
     pub usage: VisionDescribeUsage,
 }
 
+pub struct VisionForwardContext<'a> {
+    pub forwarder: &'a RequestForwarder,
+    pub method: &'a Method,
+    pub endpoint: &'a str,
+    pub headers: &'a HeaderMap,
+    pub providers: Vec<Provider>,
+}
+
 pub fn should_run(
     body: &Value,
     provider: &Provider,
@@ -78,11 +86,7 @@ fn is_configured_text_only(
 pub async fn apply(
     body: &mut Value,
     ctx: &RequestContext,
-    forwarder: &RequestForwarder,
-    method: &Method,
-    endpoint: &str,
-    headers: &HeaderMap,
-    providers: Vec<Provider>,
+    forward: VisionForwardContext<'_>,
     config: &AutotierRoutingConfigDto,
 ) -> Result<VisionApplyResult, ProxyError> {
     if !should_run(body, &ctx.provider, config, &ctx.request_model) {
@@ -128,15 +132,16 @@ pub async fn apply(
                 "content": describe_content
             }]
         });
-        let result = forwarder
+        let result = forward
+            .forwarder
             .forward_with_retry(
                 &ctx.app_type,
-                method.clone(),
-                endpoint,
+                forward.method.clone(),
+                forward.endpoint,
                 describe_body,
-                headers.clone(),
+                forward.headers.clone(),
                 Extensions::new(),
-                providers,
+                forward.providers,
             )
             .await
             .map_err(|error| error.error)?;
