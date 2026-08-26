@@ -97,7 +97,79 @@ export function ProxyTabContent({
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      <Accordion type="multiple" defaultValue={[]} className="w-full space-y-4">
+      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-indigo-500/10 p-2">
+            <Route className="h-5 w-5 text-indigo-500" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold">
+                {t("autotier.console.title")}
+              </h2>
+              <Badge variant="secondary">Shadow</Badge>
+              <Badge variant={isRunning ? "default" : "outline"}>
+                {isRunning
+                  ? t("autotier.console.observing")
+                  : t("autotier.console.waiting")}
+              </Badge>
+            </div>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              {t("autotier.console.description")}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <Accordion
+        type="multiple"
+        defaultValue={["autotierRouting"]}
+        className="w-full space-y-4"
+      >
+        <AccordionItem
+          value="autotierRouting"
+          className="rounded-xl glass-card overflow-hidden"
+        >
+          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+            <div className="flex items-center gap-3">
+              <Route className="h-5 w-5 text-indigo-500" />
+              <div className="text-left">
+                <h3 className="text-base font-semibold">
+                  {t("autotier.routing.title")}
+                </h3>
+                <p className="text-sm text-muted-foreground font-normal">
+                  {t("autotier.routing.subtitle")}
+                </p>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+            <AutotierRoutingSettingsPanel />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem
+          value="autotierDecisions"
+          className="rounded-xl glass-card overflow-hidden"
+        >
+          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+            <div className="flex items-center gap-3">
+              <Route className="h-5 w-5 text-violet-500" />
+              <div className="text-left">
+                <h3 className="text-base font-semibold">
+                  {t("autotier.decisions.title")}
+                </h3>
+                <p className="text-sm text-muted-foreground font-normal">
+                  {t("autotier.decisions.subtitle")}
+                </p>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+            <AutotierDecisionsPanel />
+          </AccordionContent>
+        </AccordionItem>
+
         {/* Local Proxy */}
         <AccordionItem
           value="proxy"
@@ -267,50 +339,6 @@ export function ProxyTabContent({
           </AccordionTrigger>
           <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
             <GlobalProxySettings />
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem
-          value="autotierRouting"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Route className="h-5 w-5 text-indigo-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("autotier.routing.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("autotier.routing.subtitle")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <AutotierRoutingSettingsPanel />
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem
-          value="autotierDecisions"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Route className="h-5 w-5 text-violet-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("autotier.decisions.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("autotier.decisions.subtitle")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <AutotierDecisionsPanel />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

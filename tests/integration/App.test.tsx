@@ -175,6 +175,12 @@ vi.mock("@/components/UpdateBadge", () => ({
   ),
 }));
 
+vi.mock("@/components/settings/SettingsPage", () => ({
+  SettingsPage: ({ defaultTab }: any) => (
+    <div data-testid="settings-page">{defaultTab}</div>
+  ),
+}));
+
 vi.mock("@/components/mcp/McpPanel", () => ({
   default: ({ open, onOpenChange }: any) =>
     open ? (
@@ -208,6 +214,17 @@ describe("App integration with MSW", () => {
     localStorage.removeItem("autotier-last-app");
     localStorage.removeItem("cc-switch-last-view");
     localStorage.removeItem("cc-switch-last-app");
+  });
+
+  it("opens the AutoTier control center directly on the routing tab", async () => {
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(await screen.findByRole("button", { name: "AutoTier" }));
+
+    expect(await screen.findByTestId("settings-page")).toHaveTextContent(
+      "proxy",
+    );
   });
 
   it("covers basic provider flows via real hooks", async () => {

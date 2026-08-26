@@ -1336,6 +1336,19 @@ function App() {
                   }
                 />
                 <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSettingsDefaultTab("proxy");
+                    setCurrentView("settings");
+                  }}
+                  title={t("autotier.console.open")}
+                  className="h-8 gap-1.5 rounded-lg px-2.5"
+                >
+                  <Shield className="h-4 w-4 text-indigo-500" />
+                  <span>AutoTier</span>
+                </Button>
+                <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => {

@@ -1,5 +1,13 @@
 export const autotierTranslations = {
   en: {
+    console: {
+      title: "AutoTier control center",
+      description:
+        "Observe how your agents use models, review explainable Shadow recommendations, and validate a routing policy before allowing it to change live traffic.",
+      open: "Open AutoTier control center",
+      observing: "Observing traffic",
+      waiting: "Proxy stopped",
+    },
     slots: {
       title: "AutoTier slots",
       subtitle:
@@ -208,6 +216,14 @@ export const autotierTranslations = {
     },
   },
   zh: {
+    console: {
+      title: "AutoTier 控制台",
+      description:
+        "观察各个 Agent 实际如何使用模型，检查可解释的 Shadow 建议；只有数据验证通过并由你批准后，才允许策略改变真实流量。",
+      open: "打开 AutoTier 控制台",
+      observing: "正在观察流量",
+      waiting: "代理未启动",
+    },
     slots: {
       title: "AutoTier 槽位",
       subtitle:
@@ -412,6 +428,14 @@ export const autotierTranslations = {
     },
   },
   ja: {
+    console: {
+      title: "AutoTier コントロールセンター",
+      description:
+        "各 Agent のモデル利用を観測し、説明可能な Shadow 提案を確認します。データ検証と明示的な承認が完了するまで実トラフィックは変更しません。",
+      open: "AutoTier コントロールセンターを開く",
+      observing: "トラフィックを観測中",
+      waiting: "プロキシ停止中",
+    },
     slots: {
       title: "AutoTier スロット",
       subtitle:
@@ -620,6 +644,14 @@ export const autotierTranslations = {
     },
   },
   "zh-TW": {
+    console: {
+      title: "AutoTier 控制台",
+      description:
+        "觀察各個 Agent 實際如何使用模型，檢查可解釋的 Shadow 建議；只有資料驗證通過並由你批准後，才允許策略改變真實流量。",
+      open: "開啟 AutoTier 控制台",
+      observing: "正在觀察流量",
+      waiting: "代理未啟動",
+    },
     slots: {
       title: "AutoTier 槽位",
       subtitle:
