@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { Server, Activity, Zap, Globe, ShieldAlert, Route } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Globe,
+  Route,
+  Server,
+  ShieldAlert,
+  SlidersHorizontal,
+  Zap,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
@@ -17,6 +26,7 @@ import { RectifierConfigPanel } from "@/components/settings/RectifierConfigPanel
 import { GlobalProxySettings } from "@/components/settings/GlobalProxySettings";
 import { AutotierRoutingSettingsPanel } from "@/components/autotier/AutotierRoutingSettingsPanel";
 import { AutotierDecisionsPanel } from "@/components/autotier/AutotierDecisionsPanel";
+import { AutotierOverviewPanel } from "@/components/autotier/AutotierOverviewPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ToggleRow } from "@/components/ui/toggle-row";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
@@ -38,6 +48,7 @@ export function ProxyTabContent({
   onAutoSave,
 }: ProxyTabContentProps) {
   const { t } = useTranslation();
+  const [activeSection, setActiveSection] = useState("overview");
   const [showProxyConfirm, setShowProxyConfirm] = useState(false);
   const [showFailoverConfirm, setShowFailoverConfirm] = useState(false);
 
@@ -97,251 +108,256 @@ export function ProxyTabContent({
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-indigo-500/10 p-2">
-            <Route className="h-5 w-5 text-indigo-500" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">
-                {t("autotier.console.title")}
-              </h2>
-              <Badge variant="secondary">Shadow</Badge>
-              <Badge variant={isRunning ? "default" : "outline"}>
-                {isRunning
-                  ? t("autotier.console.observing")
-                  : t("autotier.console.waiting")}
-              </Badge>
-            </div>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              {t("autotier.console.description")}
-            </p>
-          </div>
-        </div>
-      </div>
+      <Tabs value={activeSection} onValueChange={setActiveSection}>
+        <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl p-1">
+          <TabsTrigger value="overview" className="gap-2 py-2.5">
+            <BarChart3 className="h-4 w-4" />
+            {t("autotier.console.tabs.overview")}
+          </TabsTrigger>
+          <TabsTrigger value="decisions" className="gap-2 py-2.5">
+            <Route className="h-4 w-4" />
+            {t("autotier.console.tabs.decisions")}
+          </TabsTrigger>
+          <TabsTrigger value="setup" className="gap-2 py-2.5">
+            <SlidersHorizontal className="h-4 w-4" />
+            {t("autotier.console.tabs.setup")}
+          </TabsTrigger>
+        </TabsList>
 
-      <Accordion
-        type="multiple"
-        defaultValue={["autotierRouting"]}
-        className="w-full space-y-4"
-      >
-        <AccordionItem
-          value="autotierRouting"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Route className="h-5 w-5 text-indigo-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("autotier.routing.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("autotier.routing.subtitle")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <AutotierRoutingSettingsPanel />
-          </AccordionContent>
-        </AccordionItem>
+        <TabsContent value="overview" className="mt-4">
+          <AutotierOverviewPanel
+            isProxyRunning={isRunning}
+            takeoverStatus={takeoverStatus}
+            onOpenDecisions={() => setActiveSection("decisions")}
+            onOpenSetup={() => setActiveSection("setup")}
+          />
+        </TabsContent>
 
-        <AccordionItem
-          value="autotierDecisions"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Route className="h-5 w-5 text-violet-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("autotier.decisions.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("autotier.decisions.subtitle")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <AutotierDecisionsPanel />
-          </AccordionContent>
-        </AccordionItem>
+        <TabsContent value="decisions" className="mt-4">
+          <AutotierDecisionsPanel />
+        </TabsContent>
 
-        {/* Local Proxy */}
-        <AccordionItem
-          value="proxy"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Server className="h-5 w-5 text-green-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("settings.advanced.proxy.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("settings.advanced.proxy.description")}
-                </p>
-              </div>
-              <Badge
-                variant={isRunning ? "default" : "secondary"}
-                className="gap-1.5 h-6 ml-auto mr-2"
+        <TabsContent value="setup" className="mt-4 space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            {[1, 2, 3].map((step) => (
+              <div
+                key={step}
+                className="rounded-xl border border-border/60 bg-muted/20 p-4"
               >
-                <Activity
-                  className={`h-3 w-3 ${isRunning ? "status-heartbeat" : ""}`}
-                />
-                {isRunning
-                  ? t("settings.advanced.proxy.running")
-                  : t("settings.advanced.proxy.stopped")}
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <ProxyPanel
-              enableLocalProxy={settings?.enableLocalProxy ?? false}
-              onEnableLocalProxyChange={(checked) =>
-                onAutoSave({ enableLocalProxy: checked })
-              }
-              onToggleProxy={handleToggleProxy}
-              isProxyPending={isProxyPending}
-            />
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Auto Failover */}
-        <AccordionItem
-          value="failover"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Activity className="h-5 w-5 text-orange-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("settings.advanced.failover.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("settings.advanced.failover.description")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <div className="space-y-6">
-              <ToggleRow
-                icon={<ShieldAlert className="h-4 w-4 text-orange-500" />}
-                title={t("settings.advanced.proxy.enableFailoverToggle")}
-                description={t(
-                  "settings.advanced.proxy.enableFailoverToggleDescription",
-                )}
-                checked={settings?.enableFailoverToggle ?? false}
-                onCheckedChange={handleFailoverToggleChange}
-              />
-
-              {!isRunning && (
-                <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                  <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                    {t("proxy.failover.proxyRequired", {
-                      defaultValue: "需要先启动代理服务才能配置故障转移",
-                    })}
-                  </p>
+                <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-indigo-500/10 text-sm font-semibold text-indigo-500">
+                  {step}
                 </div>
-              )}
-
-              <Tabs defaultValue="claude" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  {FAILOVER_APPS.map(({ id, label }) => (
-                    <TabsTrigger key={id} value={id}>
-                      {label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {FAILOVER_APPS.map(({ id: appType }) => {
-                  const failoverDisabled =
-                    !isRunning || !(takeoverStatus?.[appType] ?? false);
-                  return (
-                    <TabsContent
-                      key={appType}
-                      value={appType}
-                      className="mt-4 space-y-6"
-                    >
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="text-sm font-semibold">
-                            {t("proxy.failoverQueue.title")}
-                          </h4>
-                          <p className="text-xs text-muted-foreground">
-                            {t("proxy.failoverQueue.description")}
-                          </p>
-                        </div>
-                        <FailoverQueueManager
-                          appType={appType}
-                          disabled={failoverDisabled}
-                        />
-                      </div>
-                      <div className="border-t border-border/50 pt-6">
-                        <AutoFailoverConfigPanel
-                          appType={appType}
-                          disabled={failoverDisabled}
-                        />
-                      </div>
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Rectifier */}
-        <AccordionItem
-          value="rectifier"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Zap className="h-5 w-5 text-purple-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("settings.advanced.rectifier.title")}
+                <h3 className="text-sm font-semibold">
+                  {t(`autotier.console.setup.step${step}Title`)}
                 </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("settings.advanced.rectifier.description")}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t(`autotier.console.setup.step${step}Description`)}
                 </p>
               </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <RectifierConfigPanel />
-          </AccordionContent>
-        </AccordionItem>
+            ))}
+          </div>
 
-        {/* Global Outbound Proxy */}
-        <AccordionItem
-          value="globalProxy"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Globe className="h-5 w-5 text-cyan-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("settings.advanced.globalProxy.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("settings.advanced.globalProxy.description")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <GlobalProxySettings />
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+          <Accordion
+            type="multiple"
+            defaultValue={["proxy"]}
+            className="w-full space-y-4"
+          >
+            {/* Local Proxy */}
+            <AccordionItem
+              value="proxy"
+              className="rounded-xl glass-card overflow-hidden"
+            >
+              <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Server className="h-5 w-5 text-green-500" />
+                  <div className="text-left">
+                    <h3 className="text-base font-semibold">
+                      {t("settings.advanced.proxy.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      {t("settings.advanced.proxy.description")}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={isRunning ? "default" : "secondary"}
+                    className="gap-1.5 h-6 ml-auto mr-2"
+                  >
+                    <Activity
+                      className={`h-3 w-3 ${isRunning ? "status-heartbeat" : ""}`}
+                    />
+                    {isRunning
+                      ? t("settings.advanced.proxy.running")
+                      : t("settings.advanced.proxy.stopped")}
+                  </Badge>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                <ProxyPanel
+                  enableLocalProxy={settings?.enableLocalProxy ?? false}
+                  onEnableLocalProxyChange={(checked) =>
+                    onAutoSave({ enableLocalProxy: checked })
+                  }
+                  onToggleProxy={handleToggleProxy}
+                  isProxyPending={isProxyPending}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem
+              value="autotierRouting"
+              className="rounded-xl glass-card overflow-hidden"
+            >
+              <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Route className="h-5 w-5 text-indigo-500" />
+                  <div className="text-left">
+                    <h3 className="text-base font-semibold">
+                      {t("autotier.routing.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      {t("autotier.routing.subtitle")}
+                    </p>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                <AutotierRoutingSettingsPanel />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Auto Failover */}
+            <AccordionItem
+              value="failover"
+              className="rounded-xl glass-card overflow-hidden"
+            >
+              <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Activity className="h-5 w-5 text-orange-500" />
+                  <div className="text-left">
+                    <h3 className="text-base font-semibold">
+                      {t("settings.advanced.failover.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      {t("settings.advanced.failover.description")}
+                    </p>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                <div className="space-y-6">
+                  <ToggleRow
+                    icon={<ShieldAlert className="h-4 w-4 text-orange-500" />}
+                    title={t("settings.advanced.proxy.enableFailoverToggle")}
+                    description={t(
+                      "settings.advanced.proxy.enableFailoverToggleDescription",
+                    )}
+                    checked={settings?.enableFailoverToggle ?? false}
+                    onCheckedChange={handleFailoverToggleChange}
+                  />
+
+                  {!isRunning && (
+                    <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                      <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                        {t("proxy.failover.proxyRequired", {
+                          defaultValue: "需要先启动代理服务才能配置故障转移",
+                        })}
+                      </p>
+                    </div>
+                  )}
+
+                  <Tabs defaultValue="claude" className="w-full">
+                    <TabsList className="grid w-full grid-cols-4">
+                      {FAILOVER_APPS.map(({ id, label }) => (
+                        <TabsTrigger key={id} value={id}>
+                          {label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                    {FAILOVER_APPS.map(({ id: appType }) => {
+                      const failoverDisabled =
+                        !isRunning || !(takeoverStatus?.[appType] ?? false);
+                      return (
+                        <TabsContent
+                          key={appType}
+                          value={appType}
+                          className="mt-4 space-y-6"
+                        >
+                          <div className="space-y-4">
+                            <div>
+                              <h4 className="text-sm font-semibold">
+                                {t("proxy.failoverQueue.title")}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                {t("proxy.failoverQueue.description")}
+                              </p>
+                            </div>
+                            <FailoverQueueManager
+                              appType={appType}
+                              disabled={failoverDisabled}
+                            />
+                          </div>
+                          <div className="border-t border-border/50 pt-6">
+                            <AutoFailoverConfigPanel
+                              appType={appType}
+                              disabled={failoverDisabled}
+                            />
+                          </div>
+                        </TabsContent>
+                      );
+                    })}
+                  </Tabs>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Rectifier */}
+            <AccordionItem
+              value="rectifier"
+              className="rounded-xl glass-card overflow-hidden"
+            >
+              <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Zap className="h-5 w-5 text-purple-500" />
+                  <div className="text-left">
+                    <h3 className="text-base font-semibold">
+                      {t("settings.advanced.rectifier.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      {t("settings.advanced.rectifier.description")}
+                    </p>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                <RectifierConfigPanel />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Global Outbound Proxy */}
+            <AccordionItem
+              value="globalProxy"
+              className="rounded-xl glass-card overflow-hidden"
+            >
+              <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Globe className="h-5 w-5 text-cyan-500" />
+                  <div className="text-left">
+                    <h3 className="text-base font-semibold">
+                      {t("settings.advanced.globalProxy.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      {t("settings.advanced.globalProxy.description")}
+                    </p>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                <GlobalProxySettings />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         isOpen={showProxyConfirm}

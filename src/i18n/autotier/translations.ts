@@ -7,6 +7,65 @@ export const autotierTranslations = {
       open: "Open AutoTier control center",
       observing: "Observing traffic",
       waiting: "Proxy stopped",
+      tabs: {
+        overview: "Overview",
+        decisions: "Shadow results",
+        setup: "Connect & advanced",
+      },
+      status: {
+        connected: "Connected",
+        disconnected: "Not connected",
+        trafficTitle: "Agent traffic",
+        agentCount: "{{count}} agent takeover(s) active",
+        decisionsTitle: "Shadow decisions",
+        candidateCoverage: "Candidate coverage {{percent}}",
+        safetyTitle: "Safety boundary",
+        safetyDescription: "Live is locked; raw prompts stay off by default.",
+      },
+      distribution: {
+        title: "Recommendation mix",
+        description: "Based on the latest {{count}} decision(s)",
+        cheap: "Cheap",
+        mid: "Mid",
+        strong: "Strong",
+        complete: "{{count}} complete",
+        labeled: "{{count}} reviewed",
+      },
+      next: {
+        title: "Recommended next step",
+        startProxyTitle: "Connect traffic before tuning policy",
+        startProxyDescription:
+          "Start the local proxy so AutoTier can observe real agent requests without changing their outbound models.",
+        connectAgentTitle: "Choose which agent to observe",
+        connectAgentDescription:
+          "Enable takeover for an agent from the home toolbar, then keep using that agent normally.",
+        sendTrafficTitle: "Send a real request through an agent",
+        sendTrafficDescription:
+          "The connection is ready. Use your agent normally and return here after the first Shadow decision appears.",
+        completeSlotsTitle: "Complete the model tier mapping",
+        completeSlotsDescription:
+          "Some recent decisions have no concrete candidate. Edit the active provider and complete Cheap, Mid, and Strong slots.",
+        reviewTitle: "Review the first Shadow recommendations",
+        reviewDescription:
+          "Mark recommendations as correct, too weak, or unnecessarily expensive. Those labels are the gate for future routing.",
+        keepObservingTitle: "Keep collecting representative traffic",
+        keepObservingDescription:
+          "The basic loop is healthy. Continue reviewing different task types before considering Canary or Live routing.",
+        openSetup: "Open connection setup",
+        checkSetup: "Check connection",
+        reviewAction: "Review Shadow results",
+      },
+      setup: {
+        step1Title: "Start local observation",
+        step1Description:
+          "Start the local proxy. Shadow does not change the requested provider or model.",
+        step2Title: "Connect an agent",
+        step2Description:
+          "Return home and enable takeover only for the agent whose traffic you want to observe.",
+        step3Title: "Map model tiers",
+        step3Description:
+          "Edit the active provider and assign Cheap, Mid, and Strong models; then send normal requests.",
+      },
     },
     slots: {
       title: "AutoTier slots",
@@ -223,6 +282,64 @@ export const autotierTranslations = {
       open: "打开 AutoTier 控制台",
       observing: "正在观察流量",
       waiting: "代理未启动",
+      tabs: {
+        overview: "概览",
+        decisions: "Shadow 结果",
+        setup: "接入与高级",
+      },
+      status: {
+        connected: "已连接",
+        disconnected: "未连接",
+        trafficTitle: "Agent 流量",
+        agentCount: "已接管 {{count}} 个 Agent",
+        decisionsTitle: "Shadow 决策",
+        candidateCoverage: "候选模型覆盖率 {{percent}}",
+        safetyTitle: "安全边界",
+        safetyDescription: "Live 保持锁定，默认不保存原始 Prompt。",
+      },
+      distribution: {
+        title: "建议档位分布",
+        description: "基于最近 {{count}} 条决策",
+        cheap: "Cheap｜日常任务",
+        mid: "Mid｜标准任务",
+        strong: "Strong｜复杂任务",
+        complete: "{{count}} 条已完成",
+        labeled: "{{count}} 条已复核",
+      },
+      next: {
+        title: "建议的下一步",
+        startProxyTitle: "先接入流量，再调整策略",
+        startProxyDescription:
+          "启动本地代理，让 AutoTier 观察真实 Agent 请求；Shadow 不会改变实际出站模型。",
+        connectAgentTitle: "选择要观察的 Agent",
+        connectAgentDescription:
+          "回到首页，只为需要观察的 Agent 开启接管，然后照常使用它。",
+        sendTrafficTitle: "通过 Agent 发送一次真实请求",
+        sendTrafficDescription:
+          "连接已经就绪。照常使用 Agent，出现第一条 Shadow 决策后再回到这里。",
+        completeSlotsTitle: "补全模型档位映射",
+        completeSlotsDescription:
+          "近期部分决策没有具体候选模型。请编辑当前 Provider，补全 Cheap、Mid、Strong 槽位。",
+        reviewTitle: "复核第一批 Shadow 建议",
+        reviewDescription:
+          "把建议标记为正确、能力不足或可以更便宜。这些标注是未来开放路由的门禁数据。",
+        keepObservingTitle: "继续收集有代表性的流量",
+        keepObservingDescription:
+          "基础闭环已经健康。继续覆盖不同任务类型并复核建议，再考虑 Canary 或 Live。",
+        openSetup: "打开接入设置",
+        checkSetup: "检查连接",
+        reviewAction: "查看 Shadow 结果",
+      },
+      setup: {
+        step1Title: "启动本地观察",
+        step1Description:
+          "启动本地代理。Shadow 不会改变请求使用的 Provider 或模型。",
+        step2Title: "连接一个 Agent",
+        step2Description: "返回首页，只为需要观察的 Agent 开启接管开关。",
+        step3Title: "映射模型档位",
+        step3Description:
+          "编辑当前 Provider，配置 Cheap、Mid、Strong，然后照常发送请求。",
+      },
     },
     slots: {
       title: "AutoTier 槽位",
@@ -435,6 +552,66 @@ export const autotierTranslations = {
       open: "AutoTier コントロールセンターを開く",
       observing: "トラフィックを観測中",
       waiting: "プロキシ停止中",
+      tabs: {
+        overview: "概要",
+        decisions: "Shadow 結果",
+        setup: "接続と詳細",
+      },
+      status: {
+        connected: "接続済み",
+        disconnected: "未接続",
+        trafficTitle: "Agent トラフィック",
+        agentCount: "{{count}} 個の Agent をテイクオーバー中",
+        decisionsTitle: "Shadow 判断",
+        candidateCoverage: "候補モデルのカバー率 {{percent}}",
+        safetyTitle: "安全境界",
+        safetyDescription:
+          "Live はロックされ、Raw Prompt は既定で保存しません。",
+      },
+      distribution: {
+        title: "推奨ティアの分布",
+        description: "直近 {{count}} 件の判断に基づく",
+        cheap: "Cheap",
+        mid: "Mid",
+        strong: "Strong",
+        complete: "完了 {{count}} 件",
+        labeled: "レビュー済み {{count}} 件",
+      },
+      next: {
+        title: "次に行うこと",
+        startProxyTitle: "ポリシー調整の前にトラフィックを接続",
+        startProxyDescription:
+          "ローカルプロキシを開始し、実際の outbound モデルを変えずに Agent のリクエストを観測します。",
+        connectAgentTitle: "観測する Agent を選択",
+        connectAgentDescription:
+          "ホームで対象 Agent のテイクオーバーを有効にし、通常どおり使用します。",
+        sendTrafficTitle: "Agent から実リクエストを送信",
+        sendTrafficDescription:
+          "接続は準備済みです。通常どおり Agent を使い、最初の Shadow 判断後に戻ってください。",
+        completeSlotsTitle: "モデルティアの割り当てを完成",
+        completeSlotsDescription:
+          "候補モデルのない判断があります。現在の Provider を編集し、Cheap / Mid / Strong を設定してください。",
+        reviewTitle: "最初の Shadow 提案をレビュー",
+        reviewDescription:
+          "正しい、弱すぎる、高価すぎる、を記録します。このラベルが将来のルーティングゲートになります。",
+        keepObservingTitle: "代表的なトラフィックを継続収集",
+        keepObservingDescription:
+          "基本ループは正常です。Canary や Live の前に、異なるタスクを引き続きレビューしてください。",
+        openSetup: "接続設定を開く",
+        checkSetup: "接続を確認",
+        reviewAction: "Shadow 結果を見る",
+      },
+      setup: {
+        step1Title: "ローカル観測を開始",
+        step1Description:
+          "ローカルプロキシを開始します。Shadow は Provider やモデルを変更しません。",
+        step2Title: "Agent を接続",
+        step2Description:
+          "ホームに戻り、観測する Agent だけテイクオーバーを有効にします。",
+        step3Title: "モデルティアを割り当て",
+        step3Description:
+          "現在の Provider を編集し、Cheap / Mid / Strong を設定して通常のリクエストを送ります。",
+      },
     },
     slots: {
       title: "AutoTier スロット",
@@ -651,6 +828,64 @@ export const autotierTranslations = {
       open: "開啟 AutoTier 控制台",
       observing: "正在觀察流量",
       waiting: "代理未啟動",
+      tabs: {
+        overview: "概覽",
+        decisions: "Shadow 結果",
+        setup: "接入與進階",
+      },
+      status: {
+        connected: "已連線",
+        disconnected: "未連線",
+        trafficTitle: "Agent 流量",
+        agentCount: "已接管 {{count}} 個 Agent",
+        decisionsTitle: "Shadow 決策",
+        candidateCoverage: "候選模型覆蓋率 {{percent}}",
+        safetyTitle: "安全邊界",
+        safetyDescription: "Live 保持鎖定，預設不儲存原始 Prompt。",
+      },
+      distribution: {
+        title: "建議檔位分布",
+        description: "根據最近 {{count}} 筆決策",
+        cheap: "Cheap｜日常任務",
+        mid: "Mid｜標準任務",
+        strong: "Strong｜複雜任務",
+        complete: "{{count}} 筆已完成",
+        labeled: "{{count}} 筆已複核",
+      },
+      next: {
+        title: "建議的下一步",
+        startProxyTitle: "先接入流量，再調整策略",
+        startProxyDescription:
+          "啟動本機代理，讓 AutoTier 觀察真實 Agent 請求；Shadow 不會變更實際出站模型。",
+        connectAgentTitle: "選擇要觀察的 Agent",
+        connectAgentDescription:
+          "回到首頁，只為需要觀察的 Agent 開啟接管，然後照常使用。",
+        sendTrafficTitle: "透過 Agent 傳送一次真實請求",
+        sendTrafficDescription:
+          "連線已就緒。照常使用 Agent，出現第一筆 Shadow 決策後再回到這裡。",
+        completeSlotsTitle: "補齊模型檔位對應",
+        completeSlotsDescription:
+          "近期部分決策沒有具體候選模型。請編輯目前 Provider，補齊 Cheap、Mid、Strong 槽位。",
+        reviewTitle: "複核第一批 Shadow 建議",
+        reviewDescription:
+          "將建議標記為正確、能力不足或可以更便宜。這些標記是未來開放路由的門禁資料。",
+        keepObservingTitle: "繼續收集具代表性的流量",
+        keepObservingDescription:
+          "基礎閉環已健康。繼續涵蓋不同任務並複核建議，再考慮 Canary 或 Live。",
+        openSetup: "開啟接入設定",
+        checkSetup: "檢查連線",
+        reviewAction: "查看 Shadow 結果",
+      },
+      setup: {
+        step1Title: "啟動本機觀察",
+        step1Description:
+          "啟動本機代理。Shadow 不會變更請求使用的 Provider 或模型。",
+        step2Title: "連接一個 Agent",
+        step2Description: "返回首頁，只為需要觀察的 Agent 開啟接管開關。",
+        step3Title: "對應模型檔位",
+        step3Description:
+          "編輯目前 Provider，設定 Cheap、Mid、Strong，然後照常傳送請求。",
+      },
     },
     slots: {
       title: "AutoTier 槽位",
