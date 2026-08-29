@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -127,9 +127,9 @@ jobs:
         shell: bash
         run: |
           if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "⚠️ TAURI_SIGNING_PRIVATE_KEY not set — building unsigned (no updater .sig artifacts)"
-            echo "signing_enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "❌ TAURI_SIGNING_PRIVATE_KEY is required for a release with updater artifacts" >&2
+            echo "Configure the repository/environment secret before pushing a v* tag." >&2
+            exit 1
           fi
           echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
 
@@ -608,12 +608,11 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-22.04
     needs: release
-    if: ${{ always() && !cancelled() }}
+    if: ${{ needs.release.result == 'success' }}
     permissions:
       contents: write
     steps:
       - name: Download built release artifacts
-        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: release-assets-*
@@ -762,6 +761,26 @@ jobs:
             echo '  }'
             echo '}'
           } > "$tmp_json"
+          node - "$tmp_json" <<'NODE'
+          const fs = require('fs');
+          const path = process.argv[2];
+          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const required = [
+            'darwin-aarch64', 'darwin-x86_64',
+            'windows-x86_64', 'windows-aarch64',
+            'linux-x86_64', 'linux-aarch64',
+          ];
+          const missing = required.filter((key) => {
+            const item = manifest.platforms?.[key];
+            return !item || typeof item.url !== 'string' || !item.url ||
+              typeof item.signature !== 'string' || !item.signature.trim();
+          });
+          if (missing.length) {
+            console.error(`❌ latest.json is incomplete; missing signed platforms: ${missing.join(', ')}`);
+            process.exit(1);
+          }
+          console.log(`✅ latest.json validated for ${required.length} signed platform entries`);
+          NODE
           echo "Generated latest.json:" && cat "$tmp_json"
           mv "$tmp_json" latest.json
       - name: Upload latest.json to release
