@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Normalize TAURI_SIGNING_PRIVATE_KEY into a two-line minisign secret-key file.
+# Normalize TAURI_SIGNING_PRIVATE_KEY into the official `tauri signer generate`
+# format: one line of base64 wrapping a two-line minisign secret.
 #
-# Tauri CLI accepts either a file path or the raw two-line minisign contents.
-# It does NOT accept a second base64 wrap of that file. Passing the wrapped
-# blob produces:
-#   failed to decode secret key: incorrect updater private key password:
-#   failed to fill whole buffer
+# `tauri build` treats TAURI_SIGNING_PRIVATE_KEY as a path if that path exists,
+# otherwise as the key string. In both cases the contents must be the generate
+# format. A decoded two-line minisign file fails with:
+#   failed to decode base64 secret key: Invalid symbol 32
+#
+# Re-encoding a malformed file, or handing Tauri a second unexpected wrap,
+# fails later as:
+#   incorrect updater private key password: failed to fill whole buffer
 #
 # Usage: prepare-tauri-signing-key.sh <output-path>
 # Reads the secret from TAURI_SIGNING_PRIVATE_KEY.
@@ -30,19 +34,28 @@ is_minisign_secret() {
   printf '%s\n' "$1" | head -n1 | grep -q '^untrusted comment:'
 }
 
-write_key() {
-  # Keep the comment + key lines; force a trailing newline.
-  printf '%s\n' "$1" > "$OUT"
-  if [ -n "$(tail -c1 "$OUT" 2>/dev/null || true)" ]; then
-    printf '\n' >> "$OUT"
+encode_official() {
+  # Official generate format is base64(two-line minisign secret) without wraps.
+  if command -v openssl >/dev/null 2>&1; then
+    printf '%s' "$1" | openssl base64 -A
+    return
   fi
+  if base64 -w0 </dev/null >/dev/null 2>&1; then
+    printf '%s' "$1" | base64 -w0
+    return
+  fi
+  printf '%s' "$1" | base64 | tr -d '\r\n'
 }
 
-if is_minisign_secret "$RAW"; then
-  write_key "$RAW"
-  echo "normalized: raw-minisign-file"
-  exit 0
-fi
+write_official() {
+  local official="$1"
+  official=$(printf '%s' "$official" | tr -d '\r\n\t ')
+  if [ -z "$official" ]; then
+    echo "❌ normalized signing key was empty" >&2
+    exit 1
+  fi
+  printf '%s' "$official" > "$OUT"
+}
 
 decode_b64() {
   printf '%s' "$1" | tr -d '\n\t ' | (
@@ -52,16 +65,29 @@ decode_b64() {
   )
 }
 
+if is_minisign_secret "$RAW"; then
+  TWO=$(printf '%s' "$RAW")
+  TWO="${TWO%"${TWO##*[![:space:]]}"}"
+  TWO="${TWO}"$'\n'
+  write_official "$(encode_official "$TWO")"
+  echo "normalized: raw-minisign-to-generate-format"
+  exit 0
+fi
+
 if DECODED=$(decode_b64 "$RAW") && is_minisign_secret "$DECODED"; then
-  write_key "$DECODED"
-  echo "normalized: base64-wrapped-minisign-file"
+  # Already the official generate format (or an equivalent wrap). Keep the
+  # compact single line; do not decode to a two-line file for Tauri to read.
+  write_official "$RAW"
+  echo "normalized: generate-format"
   exit 0
 fi
 
 ONE=$(printf '%s' "$RAW" | tr -d '\n\t ')
 if echo "$ONE" | grep -Eq '^[A-Za-z0-9+/=]+$' && [ "${#ONE}" -ge 64 ]; then
-  printf '%s\n%s\n' "untrusted comment: tauri signing key" "$ONE" > "$OUT"
-  echo "normalized: single-line-base64"
+  TWO=$(printf '%s\n%s' "untrusted comment: tauri signing key" "$ONE")
+  TWO="${TWO}"$'\n'
+  write_official "$(encode_official "$TWO")"
+  echo "normalized: single-line-secret-to-generate-format"
   exit 0
 fi
 

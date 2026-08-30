@@ -166,7 +166,18 @@ jobs:
           set -euo pipefail
           SMOKE="$RUNNER_TEMP/updater-key-smoke.txt"
           printf 'autotier updater key smoke\n' > "$SMOKE"
-          pnpm exec tauri signer sign "$SMOKE"
+          # `tauri signer sign` does not read TAURI_SIGNING_PRIVATE_KEY.
+          # Use the same generate-format file that `tauri build` will open.
+          if ! pnpm exec tauri signer sign \
+            --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
+            "$SMOKE"; then
+            echo "❌ Updater signing key could not sign a smoke artifact." >&2
+            echo "Check that TAURI_SIGNING_PRIVATE_KEY is the private key from" >&2
+            echo "\`tauri signer generate\` (not the pubkey) and that" >&2
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD matches." >&2
+            exit 1
+          fi
           test -s "${SMOKE}.sig"
           echo "✅ Updater signing key decoded and signed a smoke artifact"
 
