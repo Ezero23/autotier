@@ -166,6 +166,11 @@ jobs:
           set -euo pipefail
           SMOKE="$RUNNER_TEMP/updater-key-smoke.txt"
           printf 'autotier updater key smoke\n' > "$SMOKE"
+          # Safe diagnostics: byte count + sha256 + decoded comment line only.
+          echo "key-bytes: $(wc -c < "$TAURI_SIGNING_PRIVATE_KEY")"
+          echo "key-sha256: $(sha256sum "$TAURI_SIGNING_PRIVATE_KEY" | cut -d' ' -f1)"
+          echo "key-comment: $(base64 -d < "$TAURI_SIGNING_PRIVATE_KEY" 2>/dev/null | head -n1 || echo unreadable)"
+          echo "password-bytes: ${#TAURI_SIGNING_PRIVATE_KEY_PASSWORD}"
           # `tauri signer sign` does not read TAURI_SIGNING_PRIVATE_KEY.
           # Use the same generate-format file that `tauri build` will open.
           if ! pnpm exec tauri signer sign \
