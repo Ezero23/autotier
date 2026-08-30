@@ -145,9 +145,9 @@ jobs:
           fi
           echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
 
-          # Tauri CLI accepts a file path or the raw two-line minisign secret.
-          # Do not re-encode the file as base64 — that produces
-          # "incorrect updater private key password: failed to fill whole buffer".
+          # `tauri build` accepts a path or string. The file/string must be the
+          # official `tauri signer generate` format (single-line base64), not a
+          # decoded two-line minisign file.
           KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
           bash scripts/prepare-tauri-signing-key.sh "$KEY_PATH"
           echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_PATH" >> "$GITHUB_ENV"
@@ -158,7 +158,7 @@ jobs:
               echo "EOF"
             } >> "$GITHUB_ENV"
           fi
-          echo "✅ Tauri signing key prepared (path, not re-encoded)"
+          echo "✅ Tauri signing key prepared (generate-format file path)"
 
       - name: Verify updater signing key
         shell: bash

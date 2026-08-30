@@ -16,7 +16,7 @@ Task console overhaul plus a fail-closed updater release pipeline.
 
 ### Fixed
 
-- Release CI now passes Tauri the signing-key file path instead of a second base64 wrap, which previously failed as `incorrect updater private key password`
+- Release CI now writes the official `tauri signer generate` key file and smoke-signs before the long build, instead of handing Tauri a decoded two-line minisign file
 - Apple notarization and Gatekeeper verification run only when an Apple signing identity is present, so updater-signed builds can ship without Apple credentials
 
 See [v0.1.6 release notes](docs/release-notes/v0.1.6-en.md).
