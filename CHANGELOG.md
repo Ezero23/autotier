@@ -5,6 +5,22 @@ All notable changes to AutoTier (and its CC Switch upstream base) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-08-30
+
+Task console overhaul plus a fail-closed updater release pipeline.
+
+### Added
+
+- Overview, Shadow Results, and Connection & Advanced as the three routing-console entries
+- Required updater signing in the Release workflow, with `latest.json` validation for macOS, Windows x64/ARM64, and Linux x64/ARM64
+
+### Fixed
+
+- Release CI now passes Tauri the signing-key file path instead of a second base64 wrap, which previously failed as `incorrect updater private key password`
+- Apple notarization and Gatekeeper verification run only when an Apple signing identity is present, so updater-signed builds can ship without Apple credentials
+
+See [v0.1.6 release notes](docs/release-notes/v0.1.6-en.md).
+
 ## [0.1.5] - 2026-08-24
 
 Identity follow-up on v0.1.4: AutoTier menubar icon and remaining product-name cleanup.
