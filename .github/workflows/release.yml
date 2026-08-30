@@ -4,9 +4,18 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v0.1.6"
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -125,59 +134,52 @@ jobs:
       - name: Prepare Tauri signing key
         id: tauri_signing
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]; then
             echo "❌ TAURI_SIGNING_PRIVATE_KEY is required for a release with updater artifacts" >&2
             echo "Configure the repository/environment secret before pushing a v* tag." >&2
             exit 1
           fi
           echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
 
-          RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
-          # 目标：提供正确的私钥“文件路径”给 Tauri CLI，避免内容解码歧义
+          # `tauri build` accepts a path or string. The file/string must be the
+          # official `tauri signer generate` format (single-line base64), not a
+          # decoded two-line minisign file.
           KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
-          # 情况 1：原始两行文本（第一行以 "untrusted comment:" 开头）
-          if echo "$RAW" | head -n1 | grep -q '^untrusted comment:'; then
-            printf '%s\n' "$RAW" > "$KEY_PATH"
-            echo "✅ 使用原始两行密钥文件格式"
-          else
-            # 情况 2：整体被 base64 包裹（解包后应当是两行）
-            if DECODED=$(printf '%s' "$RAW" | (base64 --decode 2>/dev/null || base64 -D 2>/dev/null)) \
-               && echo "$DECODED" | head -n1 | grep -q '^untrusted comment:'; then
-              printf '%s\n' "$DECODED" > "$KEY_PATH"
-              echo "✅ 成功解码 base64 包裹密钥，已还原为两行文件"
-            else
-              # 情况 3：已是第二行（纯 Base64 一行）→ 构造两行文件
-              if echo "$RAW" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
-                ONE=$(printf '%s' "$RAW" | tr -d '\r\n')
-                printf '%s\n%s\n' "untrusted comment: tauri signing key" "$ONE" > "$KEY_PATH"
-                echo "✅ 使用一行 Base64 私钥，已构造两行文件"
-              else
-                echo "❌ TAURI_SIGNING_PRIVATE_KEY 格式无法识别：既不是两行原文，也不是其 base64，亦非一行 base64" >&2
-                echo "密钥前10个字符: $(echo "$RAW" | head -c 10)..." >&2
-                exit 1
-              fi
-            fi
+          bash scripts/prepare-tauri-signing-key.sh "$KEY_PATH"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+          if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+            {
+              echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<EOF"
+              printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
           fi
-          # 将“完整两行内容”作为环境变量注入（Tauri 支持传入完整私钥文本或文件路径）
-          # 使用多行写入语法，保持换行以便解析
-          # 将完整两行私钥内容进行 base64 编码，作为单行内容注入环境变量
-          if command -v base64 >/dev/null 2>&1; then
-            KEY_B64=$(base64 < "$KEY_PATH" | tr -d '\r\n')
-          elif command -v openssl >/dev/null 2>&1; then
-            KEY_B64=$(openssl base64 -A -in "$KEY_PATH")
-          else
-            KEY_B64=$(KEY_PATH="$KEY_PATH" node -e "process.stdout.write(require('fs').readFileSync(process.env.KEY_PATH).toString('base64'))")
-          fi
-          if [ -z "$KEY_B64" ]; then
-            echo "❌ 无法生成私钥 base64 内容" >&2
+          echo "✅ Tauri signing key prepared (generate-format file path)"
+
+      - name: Verify updater signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          SMOKE="$RUNNER_TEMP/updater-key-smoke.txt"
+          printf 'autotier updater key smoke\n' > "$SMOKE"
+          # `tauri signer sign` does not read TAURI_SIGNING_PRIVATE_KEY.
+          # Use the same generate-format file that `tauri build` will open.
+          if ! pnpm exec tauri signer sign \
+            --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
+            "$SMOKE"; then
+            echo "❌ Updater signing key could not sign a smoke artifact." >&2
+            echo "Check that TAURI_SIGNING_PRIVATE_KEY is the private key from" >&2
+            echo "\`tauri signer generate\` (not the pubkey) and that" >&2
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD matches." >&2
             exit 1
           fi
-          echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_B64" >> "$GITHUB_ENV"
-          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> $GITHUB_ENV
-          fi
-          echo "✅ Tauri signing key prepared"
+          test -s "${SMOKE}.sig"
+          echo "✅ Updater signing key decoded and signed a smoke artifact"
 
       - name: Disable updater artifacts for unsigned builds
         if: steps.tauri_signing.outputs.signing_enabled != 'true'
@@ -193,10 +195,12 @@ jobs:
           NODE
 
       - name: Import Apple signing certificate
+        id: apple_cert
         if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          echo "apple_signing=false" >> "$GITHUB_OUTPUT"
           if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then
             echo "⚠️ APPLE_CERTIFICATE not set — skipping Apple cert import"
             exit 0
@@ -235,6 +239,7 @@ jobs:
           fi
           echo "✅ Signing identity: $IDENTITY"
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "apple_signing=true" >> "$GITHUB_OUTPUT"
 
           # Cleanup certificate file
           rm -f "$CERT_PATH"
@@ -307,7 +312,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_TAG}"
 
           TAR_GZ=""; APP_PATH=""
           for path in \
@@ -372,7 +377,7 @@ jobs:
           fi
 
       - name: Notarize macOS DMG
-        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
+        if: runner.os == 'macOS' && steps.apple_cert.outputs.apple_signing == 'true'
         shell: bash
         timeout-minutes: 30
         env:
@@ -414,7 +419,7 @@ jobs:
           done
 
       - name: Verify macOS code signing and notarization
-        if: runner.os == 'macOS' && steps.tauri_signing.outputs.signing_enabled == 'true'
+        if: runner.os == 'macOS' && steps.apple_cert.outputs.apple_signing == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -466,7 +471,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          $VERSION = $env:GITHUB_REF_NAME  # e.g., v3.5.0
+          $VERSION = $env:RELEASE_TAG  # e.g., v0.1.6
           $isArm64 = $env:WINDOWS_RELEASE_ARCH -eq 'arm64'
           $targetRoot = if ($isArm64) { 'src-tauri/target/aarch64-pc-windows-msvc/release' } else { 'src-tauri/target/release' }
           $assetSuffix = if ($isArm64) { '-arm64' } else { '' }
@@ -538,7 +543,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
+          VERSION="${RELEASE_TAG}"  # e.g., v3.5.0
           ARCH="${{ matrix.arch || 'x86_64' }}"
           # Updater artifact: AppImage（含对应 .sig）
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" | head -1 || true)
@@ -632,26 +637,25 @@ jobs:
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
-          name: AutoTier ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: AutoTier ${{ env.RELEASE_TAG }}
           prerelease: false
           body: |
-            ## AutoTier ${{ github.ref_name }}
+            ## AutoTier ${{ env.RELEASE_TAG }}
 
             Local-first **Shadow routing observatory** — observe candidate decisions without changing outbound model or provider.
 
-            📖 Release notes: [English](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/${{ github.ref_name }}-en.md) · [中文](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/${{ github.ref_name }}-zh.md)
+            📖 Release notes: [English](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/${{ env.RELEASE_TAG }}-en.md) · [中文](https://github.com/${{ github.repository }}/blob/main/docs/release-notes/${{ env.RELEASE_TAG }}-zh.md)
 
             ### Downloads
 
-            - **macOS**: `AutoTier-${{ github.ref_name }}-macOS.zip` for unsigned builds; signed builds may also include `.dmg`
-            - **Windows (x64)**: `AutoTier-${{ github.ref_name }}-Windows.msi` or `-Portable.zip`
-            - **Windows (ARM64)**: `AutoTier-${{ github.ref_name }}-Windows-arm64.msi` or `-Portable.zip`
-            - **Linux (x64)**: `AutoTier-${{ github.ref_name }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
-            - **Linux (ARM64)**: `AutoTier-${{ github.ref_name }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
+            - **macOS**: `AutoTier-${{ env.RELEASE_TAG }}-macOS.zip` for unsigned builds; signed builds may also include `.dmg`
+            - **Windows (x64)**: `AutoTier-${{ env.RELEASE_TAG }}-Windows.msi` or `-Portable.zip`
+            - **Windows (ARM64)**: `AutoTier-${{ env.RELEASE_TAG }}-Windows-arm64.msi` or `-Portable.zip`
+            - **Linux (x64)**: `AutoTier-${{ env.RELEASE_TAG }}-Linux-x86_64.AppImage` / `.deb` / `.rpm`
+            - **Linux (ARM64)**: `AutoTier-${{ env.RELEASE_TAG }}-Linux-arm64.AppImage` / `.deb` / `.rpm`
 
-            > Unsigned builds omit `.sig` updater artifacts until `TAURI_SIGNING_PRIVATE_KEY` is configured in repo secrets.
-            > macOS Gatekeeper will warn until Apple signing/notarization secrets are set.
+            > Updater `.sig` artifacts are required. macOS Gatekeeper will warn until Apple signing/notarization secrets are set.
 
             ### Shadow invariants (v0.1)
 
@@ -682,7 +686,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${RELEASE_TAG}"
           mkdir -p dl
           gh release download "$TAG" --dir dl --repo "$GITHUB_REPOSITORY"
           ls -la dl || true
@@ -788,4 +792,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
-          gh release upload "$GITHUB_REF_NAME" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
