@@ -47,53 +47,53 @@ AutoTier ユーザーマニュアル
 
 ### 1. はじめに
 
-| ファイル | 内容 |
-|------|------|
-| [1.1-introduction.md](./1-getting-started/1.1-introduction.md) | ソフトウェア紹介、主要機能、対応プラットフォーム |
-| [1.2-installation.md](./1-getting-started/1.2-installation.md) | Windows/macOS/Linux インストールガイド |
-| [1.3-interface.md](./1-getting-started/1.3-interface.md) | インターフェースレイアウト、ナビゲーションバー、プロバイダーカードの説明 |
-| [1.4-quickstart.md](./1-getting-started/1.4-quickstart.md) | 5 分でできるクイックスタートチュートリアル |
-| [1.5-settings.md](./1-getting-started/1.5-settings.md) | 言語、テーマ、ディレクトリ、クラウド同期の設定 |
+| ファイル                                                       | 内容                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [1.1-introduction.md](./1-getting-started/1.1-introduction.md) | ソフトウェア紹介、主要機能、対応プラットフォーム                         |
+| [1.2-installation.md](./1-getting-started/1.2-installation.md) | Windows/macOS/Linux インストールガイド                                   |
+| [1.3-interface.md](./1-getting-started/1.3-interface.md)       | インターフェースレイアウト、ナビゲーションバー、プロバイダーカードの説明 |
+| [1.4-quickstart.md](./1-getting-started/1.4-quickstart.md)     | 5 分でできるクイックスタートチュートリアル                               |
+| [1.5-settings.md](./1-getting-started/1.5-settings.md)         | 言語、テーマ、ディレクトリ、クラウド同期の設定                           |
 
 ### 2. プロバイダー管理
 
-| ファイル | 内容 |
-|------|------|
-| [2.1-add.md](./2-providers/2.1-add.md) | プリセットの使用、カスタム設定、統一プロバイダー |
-| [2.2-switch.md](./2-providers/2.2-switch.md) | メイン画面での切り替え、トレイでの切り替え、反映方法 |
-| [2.3-edit.md](./2-providers/2.3-edit.md) | 設定の編集、API Key の変更、バックフィル機能 |
-| [2.4-sort-duplicate.md](./2-providers/2.4-sort-duplicate.md) | ドラッグで並べ替え、プロバイダーの複製、削除 |
-| [2.5-usage-query.md](./2-providers/2.5-usage-query.md) | 使用量クエリ、残額表示、複数プラン表示 |
+| ファイル                                                     | 内容                                                                    |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| [2.1-add.md](./2-providers/2.1-add.md)                       | プリセットの使用、カスタム設定、統一プロバイダー                        |
+| [2.2-switch.md](./2-providers/2.2-switch.md)                 | メイン画面での切り替え、トレイでの切り替え、反映方法                    |
+| [2.3-edit.md](./2-providers/2.3-edit.md)                     | 設定の編集、API Key の変更、バックフィル機能                            |
+| [2.4-sort-duplicate.md](./2-providers/2.4-sort-duplicate.md) | ドラッグで並べ替え、プロバイダーの複製、削除                            |
+| [2.5-usage-query.md](./2-providers/2.5-usage-query.md)       | 使用量クエリ、残額表示、複数プラン表示                                  |
 | [2.6-claude-desktop.md](./2-providers/2.6-claude-desktop.md) | Claude Desktop サードパーティプロバイダー、直結モード、モデルマッピング |
 
 ### 3. 拡張機能
 
-| ファイル | 内容 |
-|------|------|
-| [3.1-mcp.md](./3-extensions/3.1-mcp.md) | MCP プロトコル、サーバーの追加、アプリバインド |
-| [3.2-prompts.md](./3-extensions/3.2-prompts.md) | プリセットの作成、有効化の切り替え、スマートバックフィル |
-| [3.3-skills.md](./3-extensions/3.3-skills.md) | スキルの発見、インストール・アンインストール、リポジトリ管理 |
-| [3.4-sessions.md](./3-extensions/3.4-sessions.md) | セッションマネージャー：閲覧、検索、再開、削除 |
-| [3.5-workspace.md](./3-extensions/3.5-workspace.md) | ワークスペースファイルとデイリーメモリー（OpenClaw） |
+| ファイル                                            | 内容                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| [3.1-mcp.md](./3-extensions/3.1-mcp.md)             | MCP プロトコル、サーバーの追加、アプリバインド               |
+| [3.2-prompts.md](./3-extensions/3.2-prompts.md)     | プリセットの作成、有効化の切り替え、スマートバックフィル     |
+| [3.3-skills.md](./3-extensions/3.3-skills.md)       | スキルの発見、インストール・アンインストール、リポジトリ管理 |
+| [3.4-sessions.md](./3-extensions/3.4-sessions.md)   | セッションマネージャー：閲覧、検索、再開、削除               |
+| [3.5-workspace.md](./3-extensions/3.5-workspace.md) | ワークスペースファイルとデイリーメモリー（OpenClaw）         |
 
 ### 4. プロキシと高可用性
 
-| ファイル | 内容 |
-|------|------|
-| [4.1-service.md](./4-proxy/4.1-service.md) | プロキシの起動、設定項目、実行状態 |
-| [4.2-routing.md](./4-proxy/4.2-routing.md) | アプリケーションルーティング、設定変更、ステータス表示 |
-| [4.3-failover.md](./4-proxy/4.3-failover.md) | フェイルオーバーキュー、サーキットブレーカー、ヘルスステータス |
-| [4.4-usage.md](./4-proxy/4.4-usage.md) | 使用量統計、トレンドグラフ、料金設定 |
-| [4.5-model-test.md](./4-proxy/4.5-model-test.md) | モデルテスト、ヘルスチェック、レイテンシテスト |
+| ファイル                                         | 内容                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| [4.1-service.md](./4-proxy/4.1-service.md)       | プロキシの起動、設定項目、実行状態                             |
+| [4.2-routing.md](./4-proxy/4.2-routing.md)       | アプリケーションルーティング、設定変更、ステータス表示         |
+| [4.3-failover.md](./4-proxy/4.3-failover.md)     | フェイルオーバーキュー、サーキットブレーカー、ヘルスステータス |
+| [4.4-usage.md](./4-proxy/4.4-usage.md)           | 使用量統計、トレンドグラフ、料金設定                           |
+| [4.5-model-test.md](./4-proxy/4.5-model-test.md) | モデルテスト、ヘルスチェック、レイテンシテスト                 |
 
 ### 5. よくある質問
 
-| ファイル | 内容 |
-|------|------|
+| ファイル                                           | 内容                                        |
+| -------------------------------------------------- | ------------------------------------------- |
 | [5.1-config-files.md](./5-faq/5.1-config-files.md) | AutoTier のストレージ、CLI 設定ファイル形式 |
-| [5.2-questions.md](./5-faq/5.2-questions.md) | よくある質問と回答 |
-| [5.3-deeplink.md](./5-faq/5.3-deeplink.md) | ディープリンクプロトコル、生成と使用方法 |
-| [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 環境変数の競合検出と対処 |
+| [5.2-questions.md](./5-faq/5.2-questions.md)       | よくある質問と回答                          |
+| [5.3-deeplink.md](./5-faq/5.3-deeplink.md)         | ディープリンクプロトコル、生成と使用方法    |
+| [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 環境変数の競合検出と対処                    |
 
 ## クイックリンク
 
@@ -106,13 +106,13 @@ AutoTier ユーザーマニュアル
 
 ## バージョン情報
 
-- ドキュメントバージョン：v0.1.5
+- ドキュメントバージョン：v0.1.6
 - 最終更新：2026-08-24
-- AutoTier v0.1.5+ 対応
+- AutoTier v0.1.6+ 対応
 
 ### 現行バージョンの機能
 
-- **AutoTier Shadow ルーティング**：Off / Shadow 観測、候補スロット解決、copy-only legacy インポート、任意の画像アシスタント — 詳細は [v0.1.5 リリースノート](../../release-notes/v0.1.5-en.md)
+- **AutoTier Shadow ルーティング**：Off / Shadow 観測、候補スロット解決、copy-only legacy インポート、任意の画像アシスタント — 詳細は [v0.1.6 リリースノート](../../release-notes/v0.1.6-en.md)
 - **Codex Chat Completions ルーティング**：DeepSeek、Kimi、GLM、MiniMax など Chat 専用プロバイダーを Codex で利用可能 — 詳細は [2.1 プロバイダーの追加](./2-providers/2.1-add.md)
 - **管理対象 CLI ツールのライフサイクル**：設定 / About で Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes のインストール、更新、一括更新、診断に対応 — 詳細は [1.5 個人設定](./1-getting-started/1.5-settings.md)
 - **プロバイダーとモデルマトリクス更新**：提携プリセットを追加し、既定モデルと価格表を更新。Claude Opus は 4.8、該当する GPT 既定値は 5.5 に更新

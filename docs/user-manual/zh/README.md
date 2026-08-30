@@ -47,53 +47,53 @@
 
 ### 1. 快速入门
 
-| 文件 | 内容 |
-|------|------|
-| [1.1-introduction.md](./1-getting-started/1.1-introduction.md) | 软件介绍、核心功能、支持平台 |
-| [1.2-installation.md](./1-getting-started/1.2-installation.md) | Windows/macOS/Linux 安装指南 |
-| [1.3-interface.md](./1-getting-started/1.3-interface.md) | 界面布局、导航栏、供应商卡片说明 |
-| [1.4-quickstart.md](./1-getting-started/1.4-quickstart.md) | 5 分钟快速上手教程 |
-| [1.5-settings.md](./1-getting-started/1.5-settings.md) | 语言、主题、目录、云同步配置 |
+| 文件                                                           | 内容                             |
+| -------------------------------------------------------------- | -------------------------------- |
+| [1.1-introduction.md](./1-getting-started/1.1-introduction.md) | 软件介绍、核心功能、支持平台     |
+| [1.2-installation.md](./1-getting-started/1.2-installation.md) | Windows/macOS/Linux 安装指南     |
+| [1.3-interface.md](./1-getting-started/1.3-interface.md)       | 界面布局、导航栏、供应商卡片说明 |
+| [1.4-quickstart.md](./1-getting-started/1.4-quickstart.md)     | 5 分钟快速上手教程               |
+| [1.5-settings.md](./1-getting-started/1.5-settings.md)         | 语言、主题、目录、云同步配置     |
 
 ### 2. 供应商管理
 
-| 文件 | 内容 |
-|------|------|
-| [2.1-add.md](./2-providers/2.1-add.md) | 使用预设、自定义配置、统一供应商 |
-| [2.2-switch.md](./2-providers/2.2-switch.md) | 主界面切换、托盘切换、生效方式 |
-| [2.3-edit.md](./2-providers/2.3-edit.md) | 编辑配置、修改 API Key、回填机制 |
-| [2.4-sort-duplicate.md](./2-providers/2.4-sort-duplicate.md) | 拖拽排序、复制供应商、删除 |
-| [2.5-usage-query.md](./2-providers/2.5-usage-query.md) | 用量查询、剩余额度、多套餐显示 |
+| 文件                                                         | 内容                                        |
+| ------------------------------------------------------------ | ------------------------------------------- |
+| [2.1-add.md](./2-providers/2.1-add.md)                       | 使用预设、自定义配置、统一供应商            |
+| [2.2-switch.md](./2-providers/2.2-switch.md)                 | 主界面切换、托盘切换、生效方式              |
+| [2.3-edit.md](./2-providers/2.3-edit.md)                     | 编辑配置、修改 API Key、回填机制            |
+| [2.4-sort-duplicate.md](./2-providers/2.4-sort-duplicate.md) | 拖拽排序、复制供应商、删除                  |
+| [2.5-usage-query.md](./2-providers/2.5-usage-query.md)       | 用量查询、剩余额度、多套餐显示              |
 | [2.6-claude-desktop.md](./2-providers/2.6-claude-desktop.md) | Claude Desktop 第三方供应商、直连与模型映射 |
 
 ### 3. 扩展功能
 
-| 文件 | 内容 |
-|------|------|
-| [3.1-mcp.md](./3-extensions/3.1-mcp.md) | MCP 协议、添加服务器、应用绑定 |
-| [3.2-prompts.md](./3-extensions/3.2-prompts.md) | 创建预设、激活切换、智能回填 |
-| [3.3-skills.md](./3-extensions/3.3-skills.md) | 发现技能、安装卸载、仓库管理 |
-| [3.4-sessions.md](./3-extensions/3.4-sessions.md) | 会话浏览、搜索过滤、恢复与删除 |
-| [3.5-workspace.md](./3-extensions/3.5-workspace.md) | OpenClaw 工作区文件、每日记忆 |
+| 文件                                                | 内容                           |
+| --------------------------------------------------- | ------------------------------ |
+| [3.1-mcp.md](./3-extensions/3.1-mcp.md)             | MCP 协议、添加服务器、应用绑定 |
+| [3.2-prompts.md](./3-extensions/3.2-prompts.md)     | 创建预设、激活切换、智能回填   |
+| [3.3-skills.md](./3-extensions/3.3-skills.md)       | 发现技能、安装卸载、仓库管理   |
+| [3.4-sessions.md](./3-extensions/3.4-sessions.md)   | 会话浏览、搜索过滤、恢复与删除 |
+| [3.5-workspace.md](./3-extensions/3.5-workspace.md) | OpenClaw 工作区文件、每日记忆  |
 
 ### 4. 代理与高可用
 
-| 文件 | 内容 |
-|------|------|
-| [4.1-service.md](./4-proxy/4.1-service.md) | 启动代理、配置项、运行状态 |
-| [4.2-routing.md](./4-proxy/4.2-routing.md) | 应用路由、配置修改、状态指示 |
-| [4.3-failover.md](./4-proxy/4.3-failover.md) | 故障转移队列、熔断器、健康状态 |
-| [4.4-usage.md](./4-proxy/4.4-usage.md) | 用量统计、趋势图表、定价配置 |
-| [4.5-model-test.md](./4-proxy/4.5-model-test.md) | 模型检查、健康检测、延迟测试 |
+| 文件                                             | 内容                           |
+| ------------------------------------------------ | ------------------------------ |
+| [4.1-service.md](./4-proxy/4.1-service.md)       | 启动代理、配置项、运行状态     |
+| [4.2-routing.md](./4-proxy/4.2-routing.md)       | 应用路由、配置修改、状态指示   |
+| [4.3-failover.md](./4-proxy/4.3-failover.md)     | 故障转移队列、熔断器、健康状态 |
+| [4.4-usage.md](./4-proxy/4.4-usage.md)           | 用量统计、趋势图表、定价配置   |
+| [4.5-model-test.md](./4-proxy/4.5-model-test.md) | 模型检查、健康检测、延迟测试   |
 
 ### 5. 常见问题
 
-| 文件 | 内容 |
-|------|------|
+| 文件                                               | 内容                            |
+| -------------------------------------------------- | ------------------------------- |
 | [5.1-config-files.md](./5-faq/5.1-config-files.md) | AutoTier 存储、CLI 配置文件格式 |
-| [5.2-questions.md](./5-faq/5.2-questions.md) | 常见问题解答 |
-| [5.3-deeplink.md](./5-faq/5.3-deeplink.md) | 深度链接协议、生成和使用方法 |
-| [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 环境变量冲突检测与处理 |
+| [5.2-questions.md](./5-faq/5.2-questions.md)       | 常见问题解答                    |
+| [5.3-deeplink.md](./5-faq/5.3-deeplink.md)         | 深度链接协议、生成和使用方法    |
+| [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | 环境变量冲突检测与处理          |
 
 ## 快速链接
 
@@ -106,13 +106,13 @@
 
 ## 版本信息
 
-- 文档版本：v0.1.5
+- 文档版本：v0.1.6
 - 最后更新：2026-08-24
-- 适用于 AutoTier v0.1.5+
+- 适用于 AutoTier v0.1.6+
 
 ### 当前版本能力
 
-- **AutoTier Shadow 路由**：Off / Shadow 观测、候选槽位解析、copy-only legacy 导入、可选图片助手 — 详见 [v0.1.5 发行说明](../../release-notes/v0.1.5-zh.md)
+- **AutoTier Shadow 路由**：Off / Shadow 观测、候选槽位解析、copy-only legacy 导入、可选图片助手 — 详见 [v0.1.6 发行说明](../../release-notes/v0.1.6-zh.md)
 - **Codex Chat Completions 路由**：DeepSeek、Kimi、GLM、MiniMax 等仅支持 Chat 协议的供应商可通过 Codex 使用 — 详见 [2.1 添加供应商](./2-providers/2.1-add.md)
 - **托管 CLI 工具生命周期**：在设置 / 关于页安装、升级、全部升级并诊断 Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes — 详见 [1.5 个性化配置](./1-getting-started/1.5-settings.md)
 - **供应商与模型矩阵刷新**：新增合作方预设，刷新默认模型与计费矩阵，Claude Opus 默认升级到 4.8，适用场景下 GPT 默认升级到 5.5

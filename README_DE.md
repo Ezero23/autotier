@@ -217,7 +217,7 @@ Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code
 ## Screenshots
 
 |                  Hauptoberfläche                   |                  Anbieter hinzufügen                  |
-| :-----------------------------------------------: | :--------------------------------------------: |
+| :------------------------------------------------: | :---------------------------------------------------: |
 | ![Hauptoberfläche](assets/screenshots/main-en.png) | ![Anbieter hinzufügen](assets/screenshots/add-en.png) |
 
 ## Funktionen
@@ -364,7 +364,7 @@ Laden Sie das neueste Installationsprogramm `AutoTier-v{version}-Windows.msi` od
 
 **Manueller Download**
 
-Laden Sie `AutoTier-v0.1.5-macOS.zip` von der Seite [Releases](https://github.com/Ezero23/autotier/releases) herunter; der aktuelle unsignierte Build enthält keine DMG-Datei. Entpacken Sie `AutoTier.app`, verschieben Sie es in den Programme-Ordner und erlauben Sie den ersten Start bei Bedarf über Rechtsklick → „Öffnen“ oder in den macOS-Einstellungen für Datenschutz und Sicherheit.
+Laden Sie `AutoTier-v0.1.6-macOS.zip` von der Seite [Releases](https://github.com/Ezero23/autotier/releases) herunter; der aktuelle unsignierte Build enthält keine DMG-Datei. Entpacken Sie `AutoTier.app`, verschieben Sie es in den Programme-Ordner und erlauben Sie den ersten Start bei Bedarf über Rechtsklick → „Öffnen“ oder in den macOS-Einstellungen für Datenschutz und Sicherheit.
 
 ### Arch-Linux-Nutzer
 

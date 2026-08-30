@@ -7,17 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.6] - 2026-08-30
 
-Task console overhaul plus a fail-closed updater release pipeline.
+Task console overhaul plus a fail-closed, signed updater release pipeline.
 
 ### Added
 
-- Overview, Shadow Results, and Connection & Advanced as the three routing-console entries
+- Home screen "AutoTier" console button plus the three routing-console entries: Overview, Shadow Results, and Connection & Advanced
 - Required updater signing in the Release workflow, with `latest.json` validation for macOS, Windows x64/ARM64, and Linux x64/ARM64
+- Signing-key smoke test that verifies the updater key before the long build
 
-### Fixed
+### Changed
 
-- Release CI now writes the official `tauri signer generate` key file and smoke-signs before the long build, instead of handing Tauri a decoded two-line minisign file
+- Updater signing key rotated to a password-protected key pair; repository secrets hold the key and password so every platform ships `.sig` files and `latest.json.platforms` is populated
+- Window/app identity now reads "AutoTier — Agent 模型流量控制台" instead of the leftover CC Switch description
+- Release CI writes the official `tauri signer generate` key file and smoke-signs before the long build
 - Apple notarization and Gatekeeper verification run only when an Apple signing identity is present, so updater-signed builds can ship without Apple credentials
+
+### Important
+
+- Because the old updater private key was lost, builds before v0.1.6 embed a public key that no longer matches the release signatures. **Apps on v0.1.5 or earlier must update to v0.1.6 manually one last time**; from v0.1.6 onwards in-app auto-update works.
 
 See [v0.1.6 release notes](docs/release-notes/v0.1.6-en.md).
 
@@ -341,11 +348,11 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 
 ### Security
 
-- **Gemini Common Config No Longer Leaks Credentials, With a One-Time Cleanup**: The Gemini common-config extractor stripped only `GEMINI_API_KEY` and `GOOGLE_GEMINI_BASE_URL` from the shared snippet and copied every other `env` entry verbatim — but `GOOGLE_API_KEY` is a first-class Gemini credential, so one account's key (along with anything else credential-shaped) was deep-merged into every other Gemini provider using the common config and sent to that provider's base URL, which may be a third-party relay. The extractor now skips any key matching the same credential-pattern matcher the Claude extractor already uses, and the frontend snippet validator was aligned so a hand-edited snippet cannot put a key straight back. Because a Gemini snippet is never re-extracted once it exists, a one-time startup cleanup also scrubs credentials that already leaked — from the snippet, from every provider they were merged into, and from `~/.gemini/.env`, matching by key *and* value so a provider's own same-named key with a different value survives. (#5811)
+- **Gemini Common Config No Longer Leaks Credentials, With a One-Time Cleanup**: The Gemini common-config extractor stripped only `GEMINI_API_KEY` and `GOOGLE_GEMINI_BASE_URL` from the shared snippet and copied every other `env` entry verbatim — but `GOOGLE_API_KEY` is a first-class Gemini credential, so one account's key (along with anything else credential-shaped) was deep-merged into every other Gemini provider using the common config and sent to that provider's base URL, which may be a third-party relay. The extractor now skips any key matching the same credential-pattern matcher the Claude extractor already uses, and the frontend snippet validator was aligned so a hand-edited snippet cannot put a key straight back. Because a Gemini snippet is never re-extracted once it exists, a one-time startup cleanup also scrubs credentials that already leaked — from the snippet, from every provider they were merged into, and from `~/.gemini/.env`, matching by key _and_ value so a provider's own same-named key with a different value survives. (#5811)
 - **Skill Repository Install Hardening**: Installing or browsing skills from a GitHub repository could write files outside the intended directory: archive entries were joined onto the destination path without normalisation (zip-slip), and repository coordinates were never validated, so a branch like `../../../releases/download/v1/evil` retargeted the download at an arbitrary release asset — and since skill repositories can arrive via an untrusted `ccswitch://` deeplink and are enabled by default, merely opening the Skills panel could trigger the download. Skill `directory` values from restored backups, sync snapshots, and import-from-apps were likewise joined raw, letting uninstall `remove_dir_all` outside the managed skills directory. Every sink now validates the directory name, repository owner/name/branch are whitelisted at the single download convergence point, and extraction is capped (10,000 entries, 512 MB written, 128 MB download, 4 KB symlink targets, self-referential symlinks rejected), with the new errors localized in all four languages. (#5811)
 - **Deep-Link Import Confirmations Show the Whole Payload (Credentials Masked) and Flag Risky Values**: The `ccswitch://` MCP import confirmation previously rendered a single truncated `Command:` line and showed neither `args`, `url`, nor `env` — so a link carrying `command: "sh"` with `args: ["-c", "curl …|sh"]` and an `LD_PRELOAD` variable displayed as a harmless `sh`, yet was written to the live MCP files on confirm. The dialog now renders command, each argument, URL, and env vars on separate lines that wrap instead of truncating, so nothing is clipped out of view (env values whose name contains TOKEN, KEY, SECRET, or PASSWORD are shown masked, as a prefix plus asterisks), and highlights values that warrant a second look: shell interpreters invoked with inline-command flags, env vars that change how a process loads code (`LD_*`, `DYLD_*`, `NODE_OPTIONS`, `PYTHONPATH`, `PATH`, proxy vars), and endpoints pointing at loopback, private-range, or cloud-metadata addresses. The markers are advisory and never block an import — a local Ollama endpoint is ordinary usage. The provider confirmation gains the same treatment, and the "will be written immediately" warning is now shown unconditionally instead of being gated on a link-controlled field.
 - **Usage Scripts From Deep Links Arrive Disabled and Their Code Is Shown**: A usage-query script imported through a deep link is JavaScript that runs on every usage query, and it was previously possible to acquire one without ever seeing it: the backend treated the mere presence of code as a decision to enable it, and the dialog showed only an Enabled/Disabled badge. Scripts now default to disabled — a link must explicitly carry `usageEnabled=true` — and the confirmation displays the complete decoded script in a scrollable code block with a warning that it will execute once enabled. Decoding failures fall back to displaying the raw payload, so a malformed script can never read as "there is no script".
-- **URL-Safe Base64 Payloads Could Blank the Confirmation Dialog Entirely**: The two entries above make the confirmation show more; this one is about the confirmation showing *nothing*. The backend accepts four Base64 variants including the URL-safe alphabet (RFC 4648 §5), while the frontend's `atob` accepts only the standard one and, on failure, returned its input unchanged instead of signalling an error — so for the same payload the backend decoded and imported successfully while the frontend held an undecodable string. Usage scripts and system prompts rendered as opaque Base64, and MCP configs were worse: `JSON.parse` threw, the component swallowed it, and the dialog rendered **"0 servers" with an empty list while the backend wrote the real entry into the live MCP files**. Substituting a single `/` for `_` in the payload was enough — the dialog went blank, the import stayed fully functional, and the complete-payload display added above was defeated along with it. The frontend decoder now normalises the URL-safe alphabet before decoding, so the confirmation always matches what will be imported, and the shared decoder gained its first unit tests — with in-test preconditions asserting each sample really exercises the URL-safe path rather than happening to encode identically under both alphabets. Affected every release from v3.8.0 onward; see Upgrade notes for what to check.
+- **URL-Safe Base64 Payloads Could Blank the Confirmation Dialog Entirely**: The two entries above make the confirmation show more; this one is about the confirmation showing _nothing_. The backend accepts four Base64 variants including the URL-safe alphabet (RFC 4648 §5), while the frontend's `atob` accepts only the standard one and, on failure, returned its input unchanged instead of signalling an error — so for the same payload the backend decoded and imported successfully while the frontend held an undecodable string. Usage scripts and system prompts rendered as opaque Base64, and MCP configs were worse: `JSON.parse` threw, the component swallowed it, and the dialog rendered **"0 servers" with an empty list while the backend wrote the real entry into the live MCP files**. Substituting a single `/` for `_` in the payload was enough — the dialog went blank, the import stayed fully functional, and the complete-payload display added above was defeated along with it. The frontend decoder now normalises the URL-safe alphabet before decoding, so the confirmation always matches what will be imported, and the shared decoder gained its first unit tests — with in-test preconditions asserting each sample really exercises the URL-safe path rather than happening to encode identically under both alphabets. Affected every release from v3.8.0 onward; see Upgrade notes for what to check.
 - **SQL Import Rejects Statements That Reach Outside the Import Database**: Importing a database backup validated only the file's header comment and then handed the entire text to `execute_batch`, so a crafted backup could `ATTACH DATABASE` and create a SQLite file anywhere the user can write — a side effect that landed even when the import as a whole failed, and one reachable through WebDAV/S3 sync snapshots too. A SQLite authorizer is now installed for the duration of the external batch only, denying `ATTACH`/`DETACH`, `VACUUM`, virtual-table creation, and any action SQLite reports as unknown (fail-closed), with PRAGMAs limited to the two the exporter actually emits.
 - **Prototype Pollution in Common-Config Snippet Handling**: The three walkers that apply, remove, and compare common-config snippets all followed `__proto__` into the global `Object.prototype`, so a malicious snippet — reachable via WebDAV/S3 sync, since the `settings` table is overwritten by whatever the remote sends — could write attacker-chosen values onto the global prototype the moment a provider form was opened. All three walkers now skip `__proto__`, `constructor`, and `prototype`; the "common config applied" comparison also now requires own properties, fixing a visible quirk where `{"__proto__":{}}` counted as a subset of every config.
 - **Command Substitution via Project Directory Names on Terminal Launch**: Resuming a session in an external terminal built the `cd` line with double-quote escaping, which stops spaces but not `$(…)`, backticks, or `$VAR` — and the value is the real project path recorded in the CLI's session history, which may legitimately contain those characters. Any project folder named that way executed the embedded command in the user's terminal on Resume. The three launchers that build a shell line — Terminal.app, iTerm, and kitty — now use POSIX single-quote escaping, where nothing expands, including through the AppleScript quoting layer; Ghostty, WezTerm/Kaku, and Alacritty were already safe because they pass the directory as its own argument.
@@ -787,7 +794,7 @@ Development since v3.15.0 focuses on making third-party Codex providers work lik
 - **22 Codex Third-Party Provider Presets with Chat Routing**: Enabled Chat Completions routing with explicit model catalogs for major Chinese/Asian providers — DeepSeek, Zhipu GLM (+ en), Kimi, MiniMax (+ en), StepFun (+ en), Baidu Qianfan Coding Plan, Bailian, ModelScope, Longcat, BaiLing, Xiaomi MiMo (+ Token Plan), Volcengine Agentplan, BytePlus, DouBao Seed, SiliconFlow (+ en), Novita AI, and Nvidia. Each preset declares its context window so the UI can size the model-mapping rows.
 - **Codex Model Mapping Table**: Codex provider forms now expose a model catalog (model + display name + context window per row) that is the single source of truth for the upstream model list, projected to `~/.codex/cc-switch-model-catalog.json`.
 - **Codex Chat Providers in Stream Check**: Stream Check now probes Chat-format Codex providers against `/chat/completions` with a Chat-shaped body instead of `/v1/responses`, and aligns its URL fallback order with the production `CodexAdapter` (origin-only base URLs hit `/v1/<endpoint>` first) so a non-404 error on the bare path no longer flags a working provider as down.
-- **Codex Chat Reasoning Auto-Detection**: When a Codex provider is served through Chat Completions routing, CC Switch now auto-detects the upstream's reasoning interface from its name, base URL, and model — injecting the correct thinking parameter (`thinking:{type}`, `enable_thinking`, `reasoning_split`, top-level `reasoning_effort`, or OpenRouter's native `reasoning:{effort}` object) with no manual setup. Aggregator/hosting platforms (OpenRouter, SiliconFlow) are matched platform-first, since the same model can expose different reasoning controls on different platforms. Providers that only expose a thinking on/off switch (Kimi, GLM, Qwen, MiniMax, MiMo, SiliconFlow) drop the effort *level* instead of forwarding an unsupported field — so changing Codex's reasoning effort has no effect for them — while providers with real effort tiers (DeepSeek, OpenRouter, and StepFun's `step-3.5-flash-2603` only) pass the level through. OpenRouter specifically uses the native `reasoning:{effort}` object, clamps `max` to `xhigh` (its enum has no `max`), and forwards an explicit `effort:"none"` so reasoning can be turned off.
+- **Codex Chat Reasoning Auto-Detection**: When a Codex provider is served through Chat Completions routing, CC Switch now auto-detects the upstream's reasoning interface from its name, base URL, and model — injecting the correct thinking parameter (`thinking:{type}`, `enable_thinking`, `reasoning_split`, top-level `reasoning_effort`, or OpenRouter's native `reasoning:{effort}` object) with no manual setup. Aggregator/hosting platforms (OpenRouter, SiliconFlow) are matched platform-first, since the same model can expose different reasoning controls on different platforms. Providers that only expose a thinking on/off switch (Kimi, GLM, Qwen, MiniMax, MiMo, SiliconFlow) drop the effort _level_ instead of forwarding an unsupported field — so changing Codex's reasoning effort has no effect for them — while providers with real effort tiers (DeepSeek, OpenRouter, and StepFun's `step-3.5-flash-2603` only) pass the level through. OpenRouter specifically uses the native `reasoning:{effort}` object, clamps `max` to `xhigh` (its enum has no `max`), and forwards an explicit `effort:"none"` so reasoning can be turned off.
 - **Codex Goal Mode and Remote Compaction Controls**: Codex config editing now exposes a Goal Mode toggle and a Remote Compaction toggle for third-party providers; new Codex templates default to `disable_response_storage = true` while still allowing explicit goal support.
 - **Xiaomi MiMo Token Plan Presets**: Added Xiaomi MiMo Token Plan presets with specs aligned to the official documentation (#2803).
 - **Claude Desktop Official Preset**: Added a Claude Desktop Official preset that restores the native Claude Desktop login, plus a localized Claude Desktop user guide (en / zh / ja).
@@ -1084,7 +1091,7 @@ Development since v3.13.0 focuses on onboarding Hermes Agent as a first-class ma
 - **Skills Import Sync**: Imported Skills are now immediately synced into enabled app directories instead of only being recorded in the database, so the UI no longer shows "installed" while the target app directory is missing the skill.
 - **Ghostty Session Restore**: Fixed Ghostty session restore launch by using shell execution with `--working-directory`, avoiding `cwd` escaping issues when the path contains spaces or special characters.
 - **Hermes Health Check Borrowing OpenClaw Schema**: Hermes providers were routed through `check_additive_app_stream` (the OpenClaw dispatcher), which reads camelCase `baseUrl` / `apiKey` / `api` and surfaced "OpenClaw provider is missing baseUrl" even when every Hermes field was filled. Introduced `check_hermes_stream` with Hermes-specific extractors that map `api_mode` (`chat_completions` / `anthropic_messages` / `codex_responses`) to the matching `check_claude_stream` `api_format`, and returns `bedrock_converse` as unsupported. `api_mode` is now resolved before URL / API key extraction, so `bedrock_converse` users see the real cause rather than a misleading "missing base_url".
-- **Usage Query Modal for Hermes & OpenClaw**: `getProviderCredentials` now reads flat `settingsConfig` fields for Hermes (snake_case `base_url` / `api_key`) and OpenClaw (camelCase `baseUrl` / `apiKey`), so the "official balance" template auto-selects for matching providers like SiliconFlow. Also refactored the BALANCE and TOKEN_PLAN test paths to reuse the precomputed `providerCredentials` instead of re-reading `env.ANTHROPIC_*` directly, fixing the "empty key" error for non-Claude apps even when the key was configured.
+- **Usage Query Modal for Hermes & OpenClaw**: `getProviderCredentials` now reads flat `settingsConfig` fields for Hermes (snake*case `base_url` / `api_key`) and OpenClaw (camelCase `baseUrl` / `apiKey`), so the "official balance" template auto-selects for matching providers like SiliconFlow. Also refactored the BALANCE and TOKEN_PLAN test paths to reuse the precomputed `providerCredentials` instead of re-reading `env.ANTHROPIC*\*` directly, fixing the "empty key" error for non-Claude apps even when the key was configured.
 
 ### Docs
 
@@ -1885,23 +1892,28 @@ Third beta release with important bug fixes for Windows compatibility, UI improv
 ### Fixed
 
 #### Windows
+
 - Wrap npx/npm commands with `cmd /c` for MCP export
 - Prevent terminal windows from appearing during version check
 
 #### macOS
+
 - Use .app bundle path for autostart to prevent terminal window popup
 
 #### UI
+
 - Resolve Dialog/Modal not opening on first click (#492)
 - Improve dark mode text contrast for form labels
 - Reduce header spacing and fix layout shift on view switch
 - Prevent header layout shift when switching views
 
 #### Database & Schema
+
 - Add missing base columns migration for proxy_config
 - Add backward compatibility check for proxy_config seed insert
 
 #### Other
+
 - Use local timezone and robust DST handling in usage stats (#500)
 - Remove deprecated `sync_enabled_to_codex` call
 - Gracefully handle invalid Codex config.toml during MCP sync
@@ -1960,28 +1972,33 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 ### Major Features
 
 #### Local Proxy Server
+
 - **Local HTTP Proxy** - High-performance proxy server built on Axum framework
 - **Multi-app Support** - Unified proxy for Claude Code, Codex, and Gemini CLI API requests
 - **Per-app Takeover** - Independent control over which apps route through the proxy
 - **Live Config Takeover** - Automatically backs up and redirects CLI configurations to local proxy
 
 #### Auto Failover
+
 - **Circuit Breaker** - Automatically detects provider failures and triggers protection
 - **Smart Failover** - Automatically switches to backup provider when current one is unavailable
 - **Health Tracking** - Real-time monitoring of provider availability
 - **Independent Failover Queues** - Each app maintains its own failover queue
 
 #### Monitoring
+
 - **Request Logging** - Detailed logging of all proxy requests
 - **Usage Statistics** - Token consumption, latency, success rate metrics
 - **Real-time Status** - Frontend displays proxy status and statistics
 
 #### Skills Multi-App Support
+
 - **Multi-app Support** - Skills now support both Claude and Codex (#365)
 - **Multi-app Migration** - Existing Skills auto-migrate to multi-app structure (#378)
 - **Installation Path Fix** - Use directory basename for skill installation path (#358)
 
 ### Added
+
 - **Provider Icon Colors** - Customize provider icon colors (#385)
 - **Deeplink Usage Config** - Import usage query config via deeplink (#400)
 - **Error Request Logging** - Detailed logging for proxy requests (#401)
@@ -1991,6 +2008,7 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 ### Fixed
 
 #### Proxy Related
+
 - Takeover Codex base_url via model_provider
 - Harden crash recovery with fallback detection
 - Sync UI when active provider differs from current setting
@@ -2008,17 +2026,20 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - Resolve 404 error and auto-setup proxy targets
 
 #### MCP Related
+
 - Skip sync when target CLI app is not installed
 - Improve upsert and import robustness
 - Use browser-compatible platform detection for MCP presets
 
 #### UI Related
+
 - Restore fade transition for Skills button
 - Add close button to all success toasts
 - Prevent card jitter when health badge appears
 - Update SettingsPage tab styles (#342)
 
 #### Other
+
 - Fix Azure website link (#407)
 - Add fallback to provider config for usage credentials (#360)
 - Fix Windows black screen on startup (use system titlebar)
@@ -2027,11 +2048,13 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - Security fixes for JavaScript executor and usage script (#151)
 
 ### Improved
+
 - **Proxy Active Theme** - Apply emerald theme when proxy takeover is active
 - **Card Animation** - Improved provider card hover animation
 - **Remove Restart Prompt** - No longer prompts restart when switching providers
 
 ### Technical
+
 - Implement per-app takeover mode
 - Proxy module contains 20+ Rust files with complete layered architecture
 - Add 5 new database tables for proxy functionality
@@ -2039,6 +2062,7 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - Remove is_proxy_target in favor of failover_queue
 
 ### Stats
+
 - 55 commits since v3.8.2
 - 164 files changed
 - +22,164 / -570 lines

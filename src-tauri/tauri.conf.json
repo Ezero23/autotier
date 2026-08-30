@@ -56,11 +56,13 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["autotier"]
+        "schemes": [
+          "autotier"
+        ]
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERERDg0NDFGRDI4OUM1QzEKUldUQnhZblNIMFRZM2ViT1IvTWpVOUU2dnJLdzZhck04RzdjSUVxd2kwTWtOdEg1REZyZ1BFYUYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxMjg5QjI1NEJEQTcwQ0MKUldUTWNOcExKWnNvSVl1T1VHTUFReWxzdUYzWjlrUG9hZk9BYnVSNVd1NVBOblFCSXRjNFNkQXMK",
       "endpoints": [
         "https://github.com/Ezero23/autotier/releases/latest/download/latest.json"
       ]
