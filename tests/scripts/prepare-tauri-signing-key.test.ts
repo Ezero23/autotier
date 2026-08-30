@@ -78,6 +78,17 @@ describe("prepare-tauri-signing-key.sh", () => {
     rmSync(result.dir, { recursive: true, force: true });
   });
 
+  it("rejects a generate-format public key", () => {
+    const pub = [
+      "untrusted comment: minisign public key: DEADBEEF",
+      "RWTBxYnSH0TY3ebOR/MjU9E6vrKw6arM8G7cIEqwi0MkNtH5DFrgPEaF",
+    ].join("\n");
+    const result = run(Buffer.from(`${pub}\n`, "utf8").toString("base64"));
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("PUBLIC key");
+    rmSync(result.dir, { recursive: true, force: true });
+  });
+
   it("rejects garbage that is not minisign or base64", () => {
     const result = run("not-a-key!!");
     expect(result.status).not.toBe(0);
