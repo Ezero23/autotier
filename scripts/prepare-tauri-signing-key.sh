@@ -55,6 +55,26 @@ write_official() {
     exit 1
   fi
   printf '%s' "$official" > "$OUT"
+  # Safe diagnostics: comment line only, never the key material.
+  local comment
+  comment=$(decode_b64 "$official" | head -n1 || true)
+  echo "key-comment: ${comment:-<unreadable>}"
+  case "$comment" in
+    *'public key'*)
+      echo "❌ TAURI_SIGNING_PRIVATE_KEY looks like a minisign PUBLIC key, not the private key" >&2
+      exit 1
+      ;;
+    *'secret key'*|*'signing key'*)
+      ;;
+    *)
+      echo "⚠️ key comment was not the expected minisign secret-key header" >&2
+      ;;
+  esac
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+    echo "password-provided: yes"
+  else
+    echo "password-provided: no"
+  fi
 }
 
 decode_b64() {
