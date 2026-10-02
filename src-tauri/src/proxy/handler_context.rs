@@ -30,6 +30,10 @@ pub struct AutotierRequestState {
     pub decision_id: String,
     /// Provider Router 首次选中的 Provider，与 Failover 后的实际出站区分。
     pub initial_selected_provider: String,
+    /// 会话存储 key（仅客户端提供稳定 Session ID 时存在）。
+    /// Usage Finalize 用它把真实 cache 命中写回会话状态，形成反馈闭环；
+    /// 生成 UUID 的匿名请求不建会话条目，此字段为 None。
+    pub session_key: Option<crate::autotier::RoutingSessionKey>,
     pub vision_fallback_applied: bool,
     pub vision_describe_input_tokens: Option<i64>,
     pub vision_describe_output_tokens: Option<i64>,

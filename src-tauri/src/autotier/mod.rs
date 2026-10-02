@@ -35,7 +35,7 @@ mod writer;
 pub use cost::{CACHE_STATS_VERSION, CAPABILITY_TABLE_VERSION, COST_MODEL_VERSION};
 pub use decision::{
     shadow_decide, DecisionInput, DecisionResult, ReasonCode, RoutingSessionState, UnsafeReason,
-    CLASSIFIER_VERSION, POLICY_VERSION,
+    CLASSIFIER_VERSION, POLICY_VERSION, SLOT_PROTECTION_TTL_MS,
 };
 pub use export::{
     export_bundle, scan_export_secrets, validate_export_dir, ExportBundleResult, ExportManifest,

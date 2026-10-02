@@ -495,6 +495,7 @@ pub(crate) fn create_usage_collector(
     let model_extractor = parser_config.model_extractor;
     let session_id = ctx.session_id.clone();
     let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
+    let autotier_session_key = ctx.autotier.as_ref().and_then(|a| a.session_key.clone());
 
     Some(SseUsageCollector::new(
         start_time,
@@ -510,6 +511,7 @@ pub(crate) fn create_usage_collector(
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
                 let decision_id = decision_id.clone();
+                let autotier_session_key = autotier_session_key.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
@@ -526,6 +528,7 @@ pub(crate) fn create_usage_collector(
                         status_code,
                         Some(session_id),
                         decision_id,
+                        autotier_session_key,
                     )
                     .await;
                 });
@@ -538,6 +541,7 @@ pub(crate) fn create_usage_collector(
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
                 let decision_id = decision_id.clone();
+                let autotier_session_key = autotier_session_key.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
@@ -554,6 +558,7 @@ pub(crate) fn create_usage_collector(
                         status_code,
                         Some(session_id),
                         decision_id,
+                        autotier_session_key,
                     )
                     .await;
                 });
@@ -593,6 +598,7 @@ fn spawn_log_usage(
     let latency_ms = ctx.latency_ms();
     let session_id = ctx.session_id.clone();
     let decision_id = ctx.autotier.as_ref().map(|a| a.decision_id.clone());
+    let autotier_session_key = ctx.autotier.as_ref().and_then(|a| a.session_key.clone());
 
     tokio::spawn(async move {
         log_usage_internal(
@@ -609,6 +615,7 @@ fn spawn_log_usage(
             status_code,
             Some(session_id),
             decision_id,
+            autotier_session_key,
         )
         .await;
     });
@@ -643,8 +650,28 @@ async fn log_usage_internal(
     status_code: u16,
     session_id: Option<String>,
     decision_id: Option<String>,
+    autotier_session_key: Option<crate::autotier::RoutingSessionKey>,
 ) {
     use super::usage::logger::UsageLogger;
+
+    // AutoTier 反馈闭环：把真实 cache 命中写回会话状态。Shadow 推荐从不执行，
+    // 下一轮缓存保护必须锚在真实出站证据上，而不是请求体里的客户端声明。
+    // key 不存在（匿名会话/已被 LRU 淘汰）时静默 no-op；仅在真实命中时写回，
+    // 解析失败的零值 usage 不冲掉已有正反馈（过期由 TTL 净化兜底）。
+    if let Some(session_key) = autotier_session_key {
+        if usage.cache_read_tokens > 0 {
+            let cache_read_tokens = usage.cache_read_tokens;
+            let now = chrono::Utc::now().timestamp_millis();
+            state
+                .autotier_sessions
+                .update_existing_with(&session_key, |session_state| {
+                    let mut next = session_state.clone();
+                    next.last_cache_read_tokens = cache_read_tokens;
+                    next.last_cache_read_at = Some(now);
+                    next
+                });
+        }
+    }
 
     let logger = UsageLogger::new(&state.db);
     let (multiplier, pricing_model_source) =
@@ -1131,6 +1158,7 @@ mod tests {
             200,
             None,
             None,
+            None,
         )
         .await;
 
@@ -1200,6 +1228,7 @@ mod tests {
             None,
             false,
             200,
+            None,
             None,
             None,
         )
@@ -1281,6 +1310,7 @@ mod tests {
             None,
             false,
             200,
+            None,
             None,
             None,
         )

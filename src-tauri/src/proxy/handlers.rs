@@ -327,25 +327,48 @@ fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, b
     let decision_id = uuid::Uuid::new_v4().to_string();
     let initial_selected_provider = ctx.provider.id.clone();
     let session_hash = crate::autotier::hash_session_id(&ctx.session_id, &secret);
-    let session_key = crate::autotier::RoutingSessionKey::new(ctx.app_type.as_str(), session_hash);
-    let (mut row, _) = state
-        .autotier_sessions
-        .update_with(session_key, |session_state| {
-            let (row, decision, next_state) = crate::autotier::build_shadow_row_with_state(
-                &crate::autotier::ShadowInput {
-                    decision_id: decision_id.clone(),
-                    app_type: ctx.app_type.clone(),
-                    session_id: ctx.session_id.clone(),
-                    request_model: ctx.request_model.clone(),
-                    provider_id: initial_selected_provider.clone(),
-                    session_state: session_state.clone(),
-                },
-                body,
-                &autotier_config,
-                &secret,
-            );
-            (next_state, (row, decision))
-        });
+    // 会话状态只在客户端提供了稳定 Session ID 时才维护；Provider 加入 key，
+    // 切换 Provider / failover 后缓存连续性前提失效，状态自然隔离。
+    let session_key = ctx.session_client_provided.then(|| {
+        crate::autotier::RoutingSessionKey::new(
+            ctx.app_type.as_str(),
+            &initial_selected_provider,
+            session_hash,
+        )
+    });
+    let make_input =
+        |session_state: crate::autotier::RoutingSessionState| crate::autotier::ShadowInput {
+            decision_id: decision_id.clone(),
+            app_type: ctx.app_type.clone(),
+            session_id: ctx.session_id.clone(),
+            request_model: ctx.request_model.clone(),
+            provider_id: initial_selected_provider.clone(),
+            session_state,
+        };
+    let mut row = if let Some(session_key) = session_key.clone() {
+        state
+            .autotier_sessions
+            .update_with(session_key, |session_state| {
+                let (row, _decision, next_state) = crate::autotier::build_shadow_row_with_state(
+                    &make_input(session_state.clone()),
+                    body,
+                    &autotier_config,
+                    &secret,
+                );
+                (next_state, row)
+            })
+    } else {
+        // 生成的 UUID 每请求变化：若写入 store，每个请求产生一条孤立状态，
+        // LRU 被碎片填满且连续性为零（与基座上游缓存 key 处理同一教训）。
+        // 无状态观察：只计算，不读写会话存储。
+        let (row, _decision, _next_state) = crate::autotier::build_shadow_row_with_state(
+            &make_input(crate::autotier::RoutingSessionState::default()),
+            body,
+            &autotier_config,
+            &secret,
+        );
+        row
+    };
     if let Some(slot_name) = row.recommended_slot.as_deref() {
         match state
             .db
@@ -369,6 +392,7 @@ fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, b
     ctx.autotier = Some(super::handler_context::AutotierRequestState {
         decision_id,
         initial_selected_provider,
+        session_key,
         vision_fallback_applied: false,
         vision_describe_input_tokens: None,
         vision_describe_output_tokens: None,

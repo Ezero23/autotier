@@ -76,8 +76,22 @@ pub fn build_shadow_row_with_state(
 ) {
     let session_hash = hash_session_id(&input.session_id, secret);
     let mut features = extract_features(body, input.app_type.clone(), &session_hash.0);
+
+    // TTL 净化：上一轮槽位与真实缓存命中都只在 prompt cache 生命周期内有效，
+    // 过期后按新会话处理；复杂度窗口与请求计数不受 TTL 影响。
+    // 决策引擎保持无时钟纯函数（PRD §12.3），时间判断收敛在 observer 层。
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut session_state = input.session_state.clone();
+    if session_state.fresh_last_slot(now).is_none() {
+        session_state.last_recommended_slot = None;
+    }
+    if !session_state.has_fresh_cache_evidence(now) {
+        session_state.last_cache_read_tokens = 0;
+        session_state.last_cache_read_at = None;
+    }
+
     // 把上一轮的有界状态带进本轮特征快照，便于 replay/导出解释会话趋势。
-    features.recent_complexity_window = input.session_state.recent_complexity_scores.clone();
+    features.recent_complexity_window = session_state.recent_complexity_scores.clone();
 
     let decision_input = DecisionInput {
         decision_id: super::DecisionId(input.decision_id.clone()),
@@ -85,7 +99,7 @@ pub fn build_shadow_row_with_state(
         client_requested_model: input.request_model.clone(),
         initial_selected_provider: Some(input.provider_id.clone()),
         features: features.clone(),
-        session_state: input.session_state.clone(),
+        session_state,
         mode: RoutingMode::Shadow,
         feature_version: FEATURE_VERSION.to_string(),
     };
@@ -128,7 +142,6 @@ pub fn build_shadow_row_with_state(
         is_complete: false,
     };
 
-    let now = chrono::Utc::now().timestamp_millis();
     let row = AutotierDecisionRow {
         decision_id: decision.decision_id.0.clone(),
         created_at: now,
@@ -197,7 +210,13 @@ pub fn build_shadow_row_with_state(
         error_code: None,
     };
 
-    (row, decision, engine.next_state)
+    // 槽位推荐携带记录时刻返回给会话存储，供下一轮做 TTL 净化。
+    let mut next_state = engine.next_state;
+    if next_state.last_recommended_slot.is_some() {
+        next_state.last_slot_recorded_at = Some(now);
+    }
+
+    (row, decision, next_state)
 }
 
 // ===========================================================================
@@ -338,12 +357,56 @@ mod tests {
     }
 
     #[test]
+    fn stale_slot_is_purged_by_ttl_and_cache_protection_does_not_apply() {
+        let mut input = short_input("claude-sonnet-4-20250514", "provider-a");
+        // 上一轮推荐 Strong，但记录时刻已超出 prompt cache 生命周期：
+        // 缓存连续性证据失效，本轮应恢复按阈值推荐，而不是保持 Strong。
+        input.session_state = super::super::RoutingSessionState {
+            recent_complexity_scores: vec![0.1],
+            session_request_count: 1,
+            last_recommended_slot: Some(ModelSlot::Strong),
+            last_slot_recorded_at: Some(
+                chrono::Utc::now().timestamp_millis() - crate::autotier::SLOT_PROTECTION_TTL_MS - 1,
+            ),
+            last_cache_read_tokens: 9_000,
+            last_cache_read_at: Some(
+                chrono::Utc::now().timestamp_millis() - crate::autotier::SLOT_PROTECTION_TTL_MS - 1,
+            ),
+            consecutive_cache_protections: 0,
+        };
+        // body 带 cache_control 块：若无 TTL 净化，缓存保护会错误保持 Strong。
+        let body = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "x".repeat(4000), "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let config = AutotierRoutingConfigDto::default();
+        let (_row, decision, next_state) =
+            build_shadow_row_with_state(&input, &body, &config, &TEST_SECRET);
+
+        assert_ne!(
+            decision.candidate.recommended_slot,
+            Some(ModelSlot::Strong),
+            "过期槽位不得继续触发缓存保护"
+        );
+        // 推荐仍然记录新的时间戳，复杂度窗口继续累积；过期缓存证据已清零。
+        assert!(next_state.last_slot_recorded_at.is_some());
+        assert_eq!(next_state.last_cache_read_tokens, 0);
+        assert_eq!(next_state.recent_complexity_scores.len(), 2);
+        assert_eq!(next_state.session_request_count, 2);
+    }
+
+    #[test]
     fn shadow_uses_session_state_without_touching_outbound_fields() {
         let mut input = short_input("claude-sonnet-4-20250514", "provider-a");
         input.session_state = super::super::RoutingSessionState {
             recent_complexity_scores: vec![0.2, 0.35],
             session_request_count: 4,
             last_recommended_slot: Some(ModelSlot::Mid),
+            last_slot_recorded_at: Some(chrono::Utc::now().timestamp_millis()),
+            last_cache_read_tokens: 0,
+            last_cache_read_at: None,
+            consecutive_cache_protections: 0,
         };
         let body = short_body("claude-sonnet-4-20250514");
         let config = AutotierRoutingConfigDto::default();

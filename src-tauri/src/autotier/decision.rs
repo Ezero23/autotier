@@ -108,9 +108,64 @@ pub struct RoutingSessionState {
     pub session_request_count: u32,
     /// 上一次推荐的 Slot（用于 Session Stickiness / Cache Protection）。
     pub last_recommended_slot: Option<ModelSlot>,
+    /// `last_recommended_slot` 的记录时刻（epoch millis）。
+    ///
+    /// 缓存连续性有生命周期：上游 prompt cache 默认 5 分钟、extended 1 小时。
+    /// 调用方应在把状态交给决策引擎前用 [`Self::fresh_last_slot`] 做 TTL 净化；
+    /// 复杂度窗口不受 TTL 影响。
+    #[serde(default)]
+    pub last_slot_recorded_at: Option<i64>,
+    /// 上一轮真实响应的 cache read tokens（Usage Finalize 反馈）。
+    ///
+    /// 与请求体里客户端声明的 `cache_write_tokens` 不同，这是上游真实命中的
+    /// 证据。Shadow 推荐从不执行，缓存保护必须锚在真实出站而非反事实推荐上。
+    #[serde(default)]
+    pub last_cache_read_tokens: u32,
+    /// `last_cache_read_tokens` 的记录时刻（epoch millis）。
+    #[serde(default)]
+    pub last_cache_read_at: Option<i64>,
+    /// 缓存保护已连续生效的轮数。
+    ///
+    /// 防锁存：Shadow 推荐从不执行，若无上限，一次高槽位推荐可借“保护上一轮
+    /// 推荐”无限自我维持。达到 [`MAX_CONSECUTIVE_CACHE_PROTECTIONS`] 后允许降档。
+    #[serde(default)]
+    pub consecutive_cache_protections: u32,
 }
 
+/// 缓存保护的时效（毫秒）。
+///
+/// 对齐上游 prompt cache 生命周期（默认 5 分钟，extended 1 小时）再加余量；
+/// 超过该时长后，上一轮槽位不再视作缓存连续性证据。
+pub const SLOT_PROTECTION_TTL_MS: i64 = 90 * 60 * 1000;
+
+/// 缓存保护最多连续生效的轮数，超出后强制按本轮阈值重新评估。
+pub const MAX_CONSECUTIVE_CACHE_PROTECTIONS: u32 = 5;
+
 impl RoutingSessionState {
+    /// 返回仍在 TTL 内的上一轮推荐槽位；过期或无记录时返回 `None`。
+    ///
+    /// 无时间戳的历史状态（序列化兼容）按未过期处理。时钟回拨（负间隔）也
+    /// 按未过期处理，避免偶发回拨导致状态闪断。
+    pub fn fresh_last_slot(&self, now_millis: i64) -> Option<ModelSlot> {
+        match (self.last_recommended_slot, self.last_slot_recorded_at) {
+            (Some(slot), Some(recorded_at))
+                if now_millis - recorded_at <= SLOT_PROTECTION_TTL_MS =>
+            {
+                Some(slot)
+            }
+            (Some(slot), None) => Some(slot),
+            _ => None,
+        }
+    }
+
+    /// 上一轮真实 cache 命中是否仍在 TTL 内（Shadow 下最可靠的连续性证据）。
+    pub fn has_fresh_cache_evidence(&self, now_millis: i64) -> bool {
+        self.last_cache_read_tokens > 0
+            && self
+                .last_cache_read_at
+                .is_some_and(|t| now_millis - t <= SLOT_PROTECTION_TTL_MS)
+    }
+
     /// 纯函数：返回追加了新复杂度评分的新状态，不修改 `self`。
     ///
     /// `max_window` 控制滑动窗口大小，超出时丢弃最旧值。
@@ -124,6 +179,10 @@ impl RoutingSessionState {
             recent_complexity_scores: scores,
             session_request_count: self.session_request_count + 1,
             last_recommended_slot: self.last_recommended_slot,
+            last_slot_recorded_at: self.last_slot_recorded_at,
+            last_cache_read_tokens: self.last_cache_read_tokens,
+            last_cache_read_at: self.last_cache_read_at,
+            consecutive_cache_protections: self.consecutive_cache_protections,
         }
     }
 
@@ -218,7 +277,7 @@ impl DecisionResult {
 pub const CLASSIFIER_VERSION: &str = "rules-v0.2";
 
 /// Shadow 策略版本。
-pub const POLICY_VERSION: &str = "shadow-policy-v0.3";
+pub const POLICY_VERSION: &str = "shadow-policy-v0.4";
 
 // ---------------------------------------------------------------------------
 // shadow_decide — 纯函数规则分类器（Phase 3）
@@ -331,7 +390,13 @@ pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
     }
 
     // --- 缓存保护（不改分，只记录） ---
-    if f.cache_read_tokens > 0 || f.cache_write_tokens > 0 {
+    // 信号来源：请求体声明写缓存（cache_write，请求路径上 cache_read 恒为 0），
+    // 或上一轮真实响应的 cache read 命中（Usage Finalize 反馈，observer 已 TTL
+    // 净化）。真实反馈是主证据，请求声明是首轮/无反馈时的辅助信号。
+    let cache_signal = f.cache_read_tokens > 0
+        || f.cache_write_tokens > 0
+        || input.session_state.last_cache_read_tokens > 0;
+    if cache_signal {
         reasons.push(ReasonCode::CacheProtection);
     }
 
@@ -352,13 +417,19 @@ pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
 
     // 会话内已有缓存/长上下文时，只阻止无依据降档；复杂度上升仍可升档。
     // 显式小模型是客户端意图，优先级高于缓存保护。
-    let recommended = if !explicit_small
-        && (f.cache_read_tokens > 0 || f.cache_write_tokens > 0)
+    // 调用方（observer）已对 session_state 做过 TTL 净化：这里的
+    // last_recommended_slot / last_cache_read_tokens 必在时效内。
+    // 防锁存：连续保护达到上限后强制按本轮阈值重新评估，避免推荐无限自我维持。
+    let protection_exhausted =
+        input.session_state.consecutive_cache_protections >= MAX_CONSECUTIVE_CACHE_PROTECTIONS;
+    let protected = !explicit_small
+        && !protection_exhausted
+        && cache_signal
         && input
             .session_state
             .last_recommended_slot
-            .is_some_and(|previous| slot_strength(previous) > slot_strength(threshold_recommended))
-    {
+            .is_some_and(|previous| slot_strength(previous) > slot_strength(threshold_recommended));
+    let recommended = if protected {
         input.session_state.last_recommended_slot
     } else {
         Some(threshold_recommended)
@@ -375,6 +446,11 @@ pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
     // --- next_state：纯函数，不修改输入 ---
     let next_state = RoutingSessionState {
         last_recommended_slot: recommended,
+        consecutive_cache_protections: if protected {
+            input.session_state.consecutive_cache_protections + 1
+        } else {
+            0
+        },
         ..input.session_state.with_complexity_score(score, 10)
     };
 
@@ -512,6 +588,10 @@ mod tests {
             recent_complexity_scores: vec![0.1, 0.2],
             session_request_count: 5,
             last_recommended_slot: Some(ModelSlot::Mid),
+            last_slot_recorded_at: Some(1_700_000_000_000),
+            last_cache_read_tokens: 0,
+            last_cache_read_at: None,
+            consecutive_cache_protections: 0,
         };
         let original = state.clone();
 
@@ -523,6 +603,44 @@ mod tests {
         assert_eq!(next.recent_complexity_scores, vec![0.1, 0.2, 0.5]);
         assert_eq!(next.session_request_count, 6);
         assert_eq!(next.last_recommended_slot, Some(ModelSlot::Mid));
+        assert_eq!(next.last_slot_recorded_at, Some(1_700_000_000_000));
+    }
+
+    #[test]
+    fn session_state_fresh_last_slot_respects_ttl() {
+        let now = 1_700_000_000_000_i64;
+        let fresh = RoutingSessionState {
+            recent_complexity_scores: vec![],
+            session_request_count: 1,
+            last_recommended_slot: Some(ModelSlot::Strong),
+            last_slot_recorded_at: Some(now - SLOT_PROTECTION_TTL_MS + 1),
+            last_cache_read_tokens: 0,
+            last_cache_read_at: None,
+            consecutive_cache_protections: 0,
+        };
+        assert_eq!(fresh.fresh_last_slot(now), Some(ModelSlot::Strong));
+
+        let stale = RoutingSessionState {
+            last_slot_recorded_at: Some(now - SLOT_PROTECTION_TTL_MS - 1),
+            ..fresh.clone()
+        };
+        assert_eq!(stale.fresh_last_slot(now), None);
+
+        // 无时间戳的历史状态（序列化兼容）按未过期处理
+        let legacy = RoutingSessionState {
+            last_slot_recorded_at: None,
+            ..fresh.clone()
+        };
+        assert_eq!(legacy.fresh_last_slot(now), Some(ModelSlot::Strong));
+
+        // 时钟回拨（负间隔）不视为过期
+        let clock_skew = RoutingSessionState {
+            last_slot_recorded_at: Some(now + 60_000),
+            ..fresh
+        };
+        assert_eq!(clock_skew.fresh_last_slot(now), Some(ModelSlot::Strong));
+
+        assert_eq!(RoutingSessionState::default().fresh_last_slot(now), None);
     }
 
     #[test]
@@ -531,6 +649,10 @@ mod tests {
             recent_complexity_scores: vec![0.1, 0.2, 0.3],
             session_request_count: 3,
             last_recommended_slot: None,
+            last_slot_recorded_at: None,
+            last_cache_read_tokens: 0,
+            last_cache_read_at: None,
+            consecutive_cache_protections: 0,
         };
         let next = state.with_complexity_score(0.4, 3);
         // 窗口大小 3：丢弃最旧值 0.1
@@ -643,6 +765,47 @@ mod tests {
             .reason_codes
             .contains(&ReasonCode::ExplicitSmallModel));
         assert!(result.reason_codes.contains(&ReasonCode::CacheProtection));
+    }
+
+    #[test]
+    fn real_cache_hit_feedback_triggers_protection() {
+        // 请求体无 cache_control（续轮请求常态），但上一轮真实响应命中了缓存：
+        // 保护必须基于真实反馈，而不是只认请求声明。
+        let mut input = make_simple_input();
+        input.session_state.last_recommended_slot = Some(ModelSlot::Strong);
+        input.session_state.last_cache_read_tokens = 12_000;
+
+        let result = shadow_decide(&input, 0);
+
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Strong));
+        assert!(result.reason_codes.contains(&ReasonCode::CacheProtection));
+        assert_eq!(result.next_state.consecutive_cache_protections, 1);
+    }
+
+    #[test]
+    fn cache_protection_latch_breaks_after_consecutive_limit() {
+        // 已连续保护 MAX 轮：即使缓存信号仍在，也允许按本轮阈值降档，
+        // 防止一次高槽位推荐在活跃会话内无限自我维持。
+        let mut input = make_simple_input();
+        input.features.cache_write_tokens = 8_000;
+        input.session_state.last_recommended_slot = Some(ModelSlot::Strong);
+        input.session_state.consecutive_cache_protections = MAX_CONSECUTIVE_CACHE_PROTECTIONS;
+
+        let result = shadow_decide(&input, 0);
+
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Cheap));
+        assert_eq!(result.next_state.consecutive_cache_protections, 0);
+    }
+
+    #[test]
+    fn cache_protection_counter_resets_when_not_protecting() {
+        let mut input = make_simple_input();
+        input.session_state.last_recommended_slot = Some(ModelSlot::Cheap);
+        input.session_state.consecutive_cache_protections = 3;
+
+        let result = shadow_decide(&input, 0);
+
+        assert_eq!(result.next_state.consecutive_cache_protections, 0);
     }
 
     #[test]
@@ -863,6 +1026,10 @@ mod tests {
                 recent_complexity_scores: vec![0.3, 0.4, 0.5, 0.7],
                 session_request_count: 10,
                 last_recommended_slot: Some(ModelSlot::Strong),
+                last_slot_recorded_at: None,
+                last_cache_read_tokens: 0,
+                last_cache_read_at: None,
+                consecutive_cache_protections: 0,
             },
             mode: RoutingMode::Shadow,
             feature_version: "claude-extractor-v0.2".to_string(),

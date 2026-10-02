@@ -491,7 +491,7 @@ mod tests {
             feature_json: r#"{"extraction_status":"success"}"#.to_string(),
             feature_version: "claude-extractor-v0.2".to_string(),
             classifier_version: "rules-v0.2".to_string(),
-            policy_version: "shadow-policy-v0.3".to_string(),
+            policy_version: "shadow-policy-v0.4".to_string(),
             actual_input_tokens: None,
             actual_output_tokens: None,
             actual_cache_read_tokens: None,
