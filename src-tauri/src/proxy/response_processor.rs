@@ -1052,6 +1052,7 @@ mod tests {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle: None,
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
+            autotier_sessions: Arc::new(crate::autotier::RoutingSessionStore::default()),
         }
     }
 

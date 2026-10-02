@@ -326,18 +326,26 @@ fn maybe_observe_autotier_shadow(state: &ProxyState, ctx: &mut RequestContext, b
     };
     let decision_id = uuid::Uuid::new_v4().to_string();
     let initial_selected_provider = ctx.provider.id.clone();
-    let (mut row, _) = crate::autotier::build_shadow_row(
-        &crate::autotier::ShadowInput {
-            decision_id: decision_id.clone(),
-            app_type: ctx.app_type.clone(),
-            session_id: ctx.session_id.clone(),
-            request_model: ctx.request_model.clone(),
-            provider_id: initial_selected_provider.clone(),
-        },
-        body,
-        &autotier_config,
-        &secret,
-    );
+    let session_hash = crate::autotier::hash_session_id(&ctx.session_id, &secret);
+    let session_key = crate::autotier::RoutingSessionKey::new(ctx.app_type.as_str(), session_hash);
+    let (mut row, _) = state
+        .autotier_sessions
+        .update_with(session_key, |session_state| {
+            let (row, decision, next_state) = crate::autotier::build_shadow_row_with_state(
+                &crate::autotier::ShadowInput {
+                    decision_id: decision_id.clone(),
+                    app_type: ctx.app_type.clone(),
+                    session_id: ctx.session_id.clone(),
+                    request_model: ctx.request_model.clone(),
+                    provider_id: initial_selected_provider.clone(),
+                    session_state: session_state.clone(),
+                },
+                body,
+                &autotier_config,
+                &secret,
+            );
+            (next_state, (row, decision))
+        });
     if let Some(slot_name) = row.recommended_slot.as_deref() {
         match state
             .db

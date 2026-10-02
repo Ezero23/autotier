@@ -680,6 +680,7 @@ mod tests {
             session_id: "sess-xyz".to_string(),
             request_model: model.to_string(),
             provider_id: "p".to_string(),
+            session_state: crate::autotier::RoutingSessionState::default(),
         };
         let (row, _) =
             build_shadow_row(&input, &body, &AutotierRoutingConfigDto::default(), secret);

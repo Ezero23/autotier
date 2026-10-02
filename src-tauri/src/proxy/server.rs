@@ -48,6 +48,8 @@ pub struct ProxyState {
     pub app_handle: Option<tauri::AppHandle>,
     /// 故障转移切换管理器
     pub failover_manager: Arc<FailoverSwitchManager>,
+    /// AutoTier Shadow 会话状态：仅内存、有界、按应用与 HMAC session hash 隔离。
+    pub autotier_sessions: Arc<crate::autotier::RoutingSessionStore>,
 }
 
 /// 代理HTTP服务器
@@ -81,6 +83,7 @@ impl ProxyServer {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle,
             failover_manager,
+            autotier_sessions: Arc::new(crate::autotier::RoutingSessionStore::default()),
         };
 
         Self {

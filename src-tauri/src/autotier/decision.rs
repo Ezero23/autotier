@@ -218,7 +218,7 @@ impl DecisionResult {
 pub const CLASSIFIER_VERSION: &str = "rules-v0.2";
 
 /// Shadow 策略版本。
-pub const POLICY_VERSION: &str = "shadow-policy-v0.2";
+pub const POLICY_VERSION: &str = "shadow-policy-v0.3";
 
 // ---------------------------------------------------------------------------
 // shadow_decide — 纯函数规则分类器（Phase 3）
@@ -342,12 +342,26 @@ pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
     if explicit_small {
         reasons.push(ReasonCode::ExplicitSmallModel);
     }
-    let recommended = if explicit_small || score < 0.25 {
-        Some(ModelSlot::Cheap)
+    let threshold_recommended = if explicit_small || score < 0.25 {
+        ModelSlot::Cheap
     } else if score < 0.5 {
-        Some(ModelSlot::Mid)
+        ModelSlot::Mid
     } else {
-        Some(ModelSlot::Strong)
+        ModelSlot::Strong
+    };
+
+    // 会话内已有缓存/长上下文时，只阻止无依据降档；复杂度上升仍可升档。
+    // 显式小模型是客户端意图，优先级高于缓存保护。
+    let recommended = if !explicit_small
+        && (f.cache_read_tokens > 0 || f.cache_write_tokens > 0)
+        && input
+            .session_state
+            .last_recommended_slot
+            .is_some_and(|previous| slot_strength(previous) > slot_strength(threshold_recommended))
+    {
+        input.session_state.last_recommended_slot
+    } else {
+        Some(threshold_recommended)
     };
 
     // v0.1：能力未接入验证体系，任何候选都携带 CapabilityUnknown
@@ -375,6 +389,18 @@ pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
         next_state,
         classifier_version: CLASSIFIER_VERSION.to_string(),
         policy_version: POLICY_VERSION.to_string(),
+    }
+}
+
+/// 返回槽位的保守能力等级，用于会话缓存保护。
+///
+/// v0.1 分类器只产生 Cheap/Mid/Strong；LongContext 视作 Strong，Background
+/// 视作 Cheap，避免未来接入可选槽位时把它们错误当成更高等级。
+fn slot_strength(slot: ModelSlot) -> u8 {
+    match slot {
+        ModelSlot::Cheap | ModelSlot::Background => 0,
+        ModelSlot::Mid => 1,
+        ModelSlot::Strong | ModelSlot::LongContext => 2,
     }
 }
 
@@ -587,6 +613,54 @@ mod tests {
         let input = make_complex_input();
         let result = shadow_decide(&input, 0);
         assert_eq!(result.recommended_slot, Some(ModelSlot::Strong));
+        assert!(result.reason_codes.contains(&ReasonCode::ToolErrorPresent));
+    }
+
+    #[test]
+    fn cache_protection_keeps_a_higher_previous_slot() {
+        let mut input = make_simple_input();
+        input.features.cache_read_tokens = 8_000;
+        input.session_state.last_recommended_slot = Some(ModelSlot::Strong);
+
+        let result = shadow_decide(&input, 0);
+
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Strong));
+        assert!(result.reason_codes.contains(&ReasonCode::CacheProtection));
+        assert!(!result.safe_to_execute);
+    }
+
+    #[test]
+    fn explicit_small_model_overrides_cache_protection() {
+        let mut input = make_simple_input();
+        input.client_requested_model = "claude-haiku-4-5".to_string();
+        input.features.cache_read_tokens = 8_000;
+        input.session_state.last_recommended_slot = Some(ModelSlot::Strong);
+
+        let result = shadow_decide(&input, 0);
+
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Cheap));
+        assert!(result
+            .reason_codes
+            .contains(&ReasonCode::ExplicitSmallModel));
+        assert!(result.reason_codes.contains(&ReasonCode::CacheProtection));
+    }
+
+    #[test]
+    fn rising_complexity_can_upgrade_through_cache_protection() {
+        let mut input = make_simple_input();
+        input.features.cache_read_tokens = 8_000;
+        input.features.tool_result_count = 8;
+        input.features.has_error_tool_result = true;
+        input.features.constraint_count = 8;
+        input.features.code_structure_score = 0.8;
+        input.features.has_image_or_file = true;
+        input.features.has_effort_or_thinking = true;
+        input.session_state.last_recommended_slot = Some(ModelSlot::Cheap);
+
+        let result = shadow_decide(&input, 0);
+
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Strong));
+        assert!(result.reason_codes.contains(&ReasonCode::CacheProtection));
         assert!(result.reason_codes.contains(&ReasonCode::ToolErrorPresent));
     }
 

@@ -46,27 +46,38 @@ pub struct ShadowInput {
     pub session_id: String,
     pub request_model: String,
     pub provider_id: String,
+    pub session_state: super::RoutingSessionState,
 }
 
-/// 构建 Shadow 观测数据库行。
-///
-/// 入口阶段只记录客户端请求组与候选建议。Baseline/Actual 必须等 Forwarder
-/// 回填真实出站（Phase 4C），此处保持 `None`，不得把入口 `request_model` /
-/// 初始 Provider 冒充为基线或实际出站。
-///
-/// Shadow 不变量（PRD §7.3 FR-DEC-003）在入口对 `None == None` 成立：
-/// - `autotier_mutated_request = false`
-/// - `actual_outbound_* == baseline_outbound_*`
-///
-/// 返回 `(row, decision)` 对：`row` 用于异步写入 DB，`decision` 用于内存断言。
+/// 构建 Shadow 观测数据库行，兼容不需要读取 next state 的调用方。
 pub fn build_shadow_row(
+    input: &ShadowInput,
+    body: &serde_json::Value,
+    config: &AutotierRoutingConfigDto,
+    secret: &[u8],
+) -> (AutotierDecisionRow, RoutingDecision) {
+    let (row, decision, _) = build_shadow_row_with_state(input, body, config, secret);
+    (row, decision)
+}
+
+/// 构建 Shadow 行并返回本轮计算出的会话状态。
+///
+/// `next_state` 只供进程内会话存储使用，不写入数据库；数据库中的 feature_json
+/// 只保留本轮决策前的有界历史窗口。
+pub fn build_shadow_row_with_state(
     input: &ShadowInput,
     body: &serde_json::Value,
     _config: &AutotierRoutingConfigDto,
     secret: &[u8],
-) -> (AutotierDecisionRow, RoutingDecision) {
+) -> (
+    AutotierDecisionRow,
+    RoutingDecision,
+    super::RoutingSessionState,
+) {
     let session_hash = hash_session_id(&input.session_id, secret);
-    let features = extract_features(body, input.app_type.clone(), &session_hash.0);
+    let mut features = extract_features(body, input.app_type.clone(), &session_hash.0);
+    // 把上一轮的有界状态带进本轮特征快照，便于 replay/导出解释会话趋势。
+    features.recent_complexity_window = input.session_state.recent_complexity_scores.clone();
 
     let decision_input = DecisionInput {
         decision_id: super::DecisionId(input.decision_id.clone()),
@@ -74,7 +85,7 @@ pub fn build_shadow_row(
         client_requested_model: input.request_model.clone(),
         initial_selected_provider: Some(input.provider_id.clone()),
         features: features.clone(),
-        session_state: super::RoutingSessionState::default(),
+        session_state: input.session_state.clone(),
         mode: RoutingMode::Shadow,
         feature_version: FEATURE_VERSION.to_string(),
     };
@@ -186,7 +197,7 @@ pub fn build_shadow_row(
         error_code: None,
     };
 
-    (row, decision)
+    (row, decision, engine.next_state)
 }
 
 // ===========================================================================
@@ -210,6 +221,7 @@ mod tests {
             session_id: "sess-abc".to_string(),
             request_model: model.to_string(),
             provider_id: provider.to_string(),
+            session_state: super::super::RoutingSessionState::default(),
         }
     }
 
@@ -323,6 +335,53 @@ mod tests {
 
         let failed: Result<AutotierRoutingConfigDto, &str> = Err("db locked");
         assert!(shadow_config_for_observe(failed).is_none());
+    }
+
+    #[test]
+    fn shadow_uses_session_state_without_touching_outbound_fields() {
+        let mut input = short_input("claude-sonnet-4-20250514", "provider-a");
+        input.session_state = super::super::RoutingSessionState {
+            recent_complexity_scores: vec![0.2, 0.35],
+            session_request_count: 4,
+            last_recommended_slot: Some(ModelSlot::Mid),
+        };
+        let body = short_body("claude-sonnet-4-20250514");
+        let config = AutotierRoutingConfigDto::default();
+        let (row, _decision, next_state) =
+            build_shadow_row_with_state(&input, &body, &config, &TEST_SECRET);
+        let feature_doc: serde_json::Value = serde_json::from_str(&row.feature_json).unwrap();
+        assert_eq!(
+            feature_doc["recent_complexity_window"],
+            serde_json::json!([0.2, 0.35])
+        );
+        assert_eq!(next_state.session_request_count, 5);
+        assert_eq!(next_state.last_recommended_slot, Some(ModelSlot::Cheap));
+        assert_eq!(row.baseline_outbound_model, None);
+        assert_eq!(row.actual_outbound_model, None);
+        assert!(!row.autotier_mutated_request);
+    }
+
+    #[test]
+    fn shadow_session_state_preserves_cached_higher_slot() {
+        let mut input = short_input("claude-sonnet-4-20250514", "provider-a");
+        input.session_state.last_recommended_slot = Some(ModelSlot::Strong);
+        let body = serde_json::json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{
+                "type": "text",
+                "text": "cached context",
+                "cache_control": {"type": "ephemeral"}
+            }],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let config = AutotierRoutingConfigDto::default();
+        let (row, _decision, next_state) =
+            build_shadow_row_with_state(&input, &body, &config, &TEST_SECRET);
+        assert_eq!(
+            row.recommended_slot.as_deref(),
+            Some(ModelSlot::Strong.as_str())
+        );
+        assert_eq!(next_state.last_recommended_slot, Some(ModelSlot::Strong));
     }
 
     #[test]
