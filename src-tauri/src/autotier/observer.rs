@@ -251,6 +251,202 @@ mod tests {
         })
     }
 
+    /// 端到端：store → observer → usage 反馈 → observer 的完整闭环。
+    ///
+    /// 覆盖 8b42e196/73916af1 引入的全部新语义，模拟代理处理同一会话的连续
+    /// 请求：请求 1 简单（Cheap）；响应真实命中缓存并写回；请求 2 仍简单但因
+    /// 真实缓存证据保持 Strong；之后每轮无缓存反馈，连续保护上限到期后降回
+    /// Cheap；期间复杂度窗口与请求计数持续累积。
+    #[test]
+    fn shadow_session_loop_tracks_feedback_protection_and_latch_break() {
+        let store = crate::autotier::RoutingSessionStore::default();
+        let config = AutotierRoutingConfigDto::default();
+        let key = crate::autotier::RoutingSessionKey::new(
+            "claude",
+            "provider-a",
+            hash_session_id("sess-chain", &TEST_SECRET),
+        );
+
+        let simple = || {
+            json!({
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "hi"}]
+            })
+        };
+        let run_request =
+            |session_id: &str| -> (AutotierDecisionRow, crate::autotier::RoutingDecision) {
+                store.update_with(key.clone(), |state| {
+                    let (row, decision, next) = build_shadow_row_with_state(
+                        &ShadowInput {
+                            decision_id: uuid::Uuid::new_v4().to_string(),
+                            app_type: AppType::Claude,
+                            session_id: session_id.to_string(),
+                            request_model: "claude-sonnet-4-20250514".to_string(),
+                            provider_id: "provider-a".to_string(),
+                            session_state: state.clone(),
+                        },
+                        &simple(),
+                        &config,
+                        &TEST_SECRET,
+                    );
+                    (next, (row, decision))
+                })
+            };
+
+        // 轮 1：无状态 → 按阈值 Cheap，被推荐的槽位落盘为 Strong 以模拟
+        // “首轮复杂”的实际场景？不——断言基线：简单请求就是 Cheap。
+        let (row1, _) = run_request("sess-chain");
+        assert_eq!(row1.recommended_slot.as_deref(), Some("cheap"));
+        assert!(!row1.autotier_mutated_request);
+        assert!(!row1.safe_to_execute);
+        assert_eq!(row1.baseline_outbound_model, None);
+        assert_eq!(row1.actual_outbound_model, None);
+
+        // 人为把上一轮推荐提升为 Strong（模拟“首轮确实复杂”的真实结果），
+        // 再写回一条真实 cache 命中反馈，如 Usage Finalize 所为。
+        let now = chrono::Utc::now().timestamp_millis();
+        assert!(store.update_existing_with(&key, |state| {
+            let mut next = state.clone();
+            next.last_recommended_slot = Some(ModelSlot::Strong);
+            next.last_slot_recorded_at = Some(now);
+            next.last_cache_read_tokens = 12_000;
+            next.last_cache_read_at = Some(now);
+            next
+        }));
+
+        // 轮 2～6：请求仍简单，但真实缓存证据 + 上一轮 Strong 使其被保护。
+        for round in 2..=6 {
+            let (row, _) = run_request("sess-chain");
+            assert_eq!(
+                row.recommended_slot.as_deref(),
+                Some("strong"),
+                "第 {round} 轮应被缓存保护保持 Strong"
+            );
+            assert_eq!(
+                store.get(&key).unwrap().consecutive_cache_protections,
+                (round - 1) as u32
+            );
+        }
+
+        // 轮 7：连续保护已达 5 轮上限 → 强制按阈值重新评估，回落 Cheap。
+        let (row7, _) = run_request("sess-chain");
+        assert_eq!(row7.recommended_slot.as_deref(), Some("cheap"));
+        assert_eq!(store.get(&key).unwrap().consecutive_cache_protections, 0);
+
+        // 复杂度窗口与请求计数在 7 轮中持续累积。
+        let state = store.get(&key).unwrap();
+        assert_eq!(state.session_request_count, 7);
+        assert_eq!(state.recent_complexity_scores.len(), 7);
+    }
+
+    /// 端到端：过期会话与切换 Provider 后保护不再生效，且复杂度窗口保留。
+    #[test]
+    fn shadow_session_loop_ttl_and_provider_isolation() {
+        let store = crate::autotier::RoutingSessionStore::default();
+        let config = AutotierRoutingConfigDto::default();
+        let body = json!({
+            "model": "claude-sonnet-4-20250514",
+            "system": [{"type": "text", "text": "x".repeat(4000), "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+
+        let stale_at =
+            chrono::Utc::now().timestamp_millis() - crate::autotier::SLOT_PROTECTION_TTL_MS - 1;
+        let prime = |store: &crate::autotier::RoutingSessionStore,
+                     key: &crate::autotier::RoutingSessionKey| {
+            store.update_with(key.clone(), |_| {
+                let mut next = crate::autotier::RoutingSessionState::default();
+                next.session_request_count = 3;
+                next.recent_complexity_scores = vec![0.3, 0.4, 0.5];
+                next.last_recommended_slot = Some(ModelSlot::Strong);
+                next.last_slot_recorded_at = Some(stale_at);
+                next.last_cache_read_tokens = 9_000;
+                next.last_cache_read_at = Some(stale_at);
+                (next, ())
+            });
+        };
+        let run = |store: &crate::autotier::RoutingSessionStore,
+                   key: &crate::autotier::RoutingSessionKey| {
+            store.update_with(key.clone(), |state| {
+                let (row, _, next) = build_shadow_row_with_state(
+                    &ShadowInput {
+                        decision_id: uuid::Uuid::new_v4().to_string(),
+                        app_type: AppType::Claude,
+                        session_id: "sess-old".to_string(),
+                        request_model: "claude-sonnet-4-20250514".to_string(),
+                        provider_id: "provider-a".to_string(),
+                        session_state: state.clone(),
+                    },
+                    &body,
+                    &config,
+                    &TEST_SECRET,
+                );
+                (next, row)
+            })
+        };
+
+        // 场景 A：同一 key 但证据过期 → 不保护（即使 body 声明写缓存）。
+        let key_a = crate::autotier::RoutingSessionKey::new(
+            "claude",
+            "provider-a",
+            hash_session_id("sess-old", &TEST_SECRET),
+        );
+        prime(&store, &key_a);
+        let row_a = run(&store, &key_a);
+        assert_ne!(row_a.recommended_slot.as_deref(), Some("strong"));
+        let state_a = store.get(&key_a).unwrap();
+        // 复杂度窗口保留并累积，但过期槽位与缓存证据已清零。
+        assert_eq!(state_a.recent_complexity_scores.len(), 4);
+        assert_eq!(state_a.last_cache_read_tokens, 0);
+
+        // 场景 B：Provider 切换 → 新 key 从默认状态开始。
+        let key_b = crate::autotier::RoutingSessionKey::new(
+            "claude",
+            "provider-b",
+            hash_session_id("sess-old", &TEST_SECRET),
+        );
+        assert_eq!(store.get(&key_b), None);
+        let row_b = run(&store, &key_b);
+        assert_ne!(row_b.recommended_slot.as_deref(), Some("strong"));
+    }
+
+    /// 端到端：生成 UUID 的匿名会话不建 store 条目，反馈写回静默跳过。
+    #[test]
+    fn shadow_session_loop_generated_session_ids_are_stateless() {
+        let store = crate::autotier::RoutingSessionStore::default();
+        let config = AutotierRoutingConfigDto::default();
+        let body = short_body("claude-sonnet-4-20250514");
+
+        for i in 0..3 {
+            // 每轮用不同 UUID 模拟匿名会话；生产路径在
+            // session_client_provided=false 时直接走此无状态分支。
+            let session_id = format!("generated-uuid-{i}");
+            let (row, _, _) = build_shadow_row_with_state(
+                &ShadowInput {
+                    decision_id: uuid::Uuid::new_v4().to_string(),
+                    app_type: AppType::Claude,
+                    session_id,
+                    request_model: "claude-sonnet-4-20250514".to_string(),
+                    provider_id: "provider-a".to_string(),
+                    session_state: crate::autotier::RoutingSessionState::default(),
+                },
+                &body,
+                &config,
+                &TEST_SECRET,
+            );
+            assert_eq!(row.recommended_slot.as_deref(), Some("cheap"));
+        }
+        assert!(store.is_empty());
+
+        let ghost = crate::autotier::RoutingSessionKey::new(
+            "claude",
+            "provider-a",
+            hash_session_id("generated-uuid-0", &TEST_SECRET),
+        );
+        assert!(!store.update_existing_with(&ghost, |s| s.clone()));
+        assert!(store.is_empty());
+    }
+
     #[test]
     fn shadow_preserves_client_request_and_leaves_outbound_unset() {
         let input = short_input("claude-sonnet-4-20250514", "provider-a");
