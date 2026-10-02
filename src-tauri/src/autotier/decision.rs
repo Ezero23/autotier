@@ -38,6 +38,10 @@ pub enum ReasonCode {
     HighConstraintCount,
     /// 推理信号。
     ReasoningSignal,
+    /// 推理关键词信号（证明/推导/prove 等，聊天场景语义复杂度）。
+    ReasoningKeywordSignal,
+    /// 用户消息含报错上下文（聊天场景的排错信号）。
+    ErrorContextPresent,
     /// 架构级信号。
     ArchitectureSignal,
     /// 多模态输入。
@@ -274,7 +278,7 @@ impl DecisionResult {
 }
 
 /// 规则分类器版本。任何权重/阈值/规则变更必须 bump。
-pub const CLASSIFIER_VERSION: &str = "rules-v0.2";
+pub const CLASSIFIER_VERSION: &str = "rules-v0.3";
 
 /// Shadow 策略版本。
 pub const POLICY_VERSION: &str = "shadow-policy-v0.4";
@@ -381,6 +385,28 @@ pub fn shadow_decide(input: &DecisionInput, _clock_ms: u64) -> DecisionResult {
     if f.has_effort_or_thinking {
         reasons.push(ReasonCode::ReasoningSignal);
         score += 0.1;
+    }
+
+    // --- 推理关键词（聊天场景：无工具循环时的主要语义信号）---
+    // 分级加权：单次提及 +0.25（落到 Mid）；密集推理标记（>=3）再 +0.15。
+    // 单独一个词不足以顶到 Strong 门槛（0.5），需与其他信号组合。
+    if f.reasoning_keyword_count > 0 {
+        reasons.push(ReasonCode::ReasoningKeywordSignal);
+        score += if f.reasoning_keyword_count >= 3 {
+            0.4
+        } else {
+            0.25
+        };
+    }
+
+    // --- 用户消息含报错上下文 ---
+    if f.error_signal_count > 0 {
+        reasons.push(ReasonCode::ErrorContextPresent);
+        score += 0.25;
+        // 报错 + 代码结构 = 调试/修复任务，复杂度显著上调
+        if f.code_structure_score >= 0.3 {
+            score += 0.25;
+        }
     }
 
     // --- 会话趋势 ---
@@ -984,14 +1010,17 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
                 has_effort_or_thinking: false,
+                reasoning_keyword_count: 0,
+                error_signal_count: 0,
+                unfenced_code_hits: 0,
                 recent_complexity_window: vec![],
                 session_id_hash: super::super::SessionIdHash("h".to_string()),
-                feature_version: "claude-extractor-v0.2".to_string(),
+                feature_version: "claude-extractor-v0.3".to_string(),
                 extraction_status: super::super::features::ExtractionStatus::Success,
             },
             session_state: RoutingSessionState::default(),
             mode: RoutingMode::Shadow,
-            feature_version: "claude-extractor-v0.2".to_string(),
+            feature_version: "claude-extractor-v0.3".to_string(),
         }
     }
 
@@ -1017,9 +1046,12 @@ mod tests {
                 cache_read_tokens: 50000,
                 cache_write_tokens: 10000,
                 has_effort_or_thinking: true,
+                reasoning_keyword_count: 0,
+                error_signal_count: 0,
+                unfenced_code_hits: 0,
                 recent_complexity_window: vec![0.3, 0.4, 0.5, 0.7],
                 session_id_hash: super::super::SessionIdHash("h".to_string()),
-                feature_version: "claude-extractor-v0.2".to_string(),
+                feature_version: "claude-extractor-v0.3".to_string(),
                 extraction_status: super::super::features::ExtractionStatus::Success,
             },
             session_state: RoutingSessionState {
@@ -1032,7 +1064,7 @@ mod tests {
                 consecutive_cache_protections: 0,
             },
             mode: RoutingMode::Shadow,
-            feature_version: "claude-extractor-v0.2".to_string(),
+            feature_version: "claude-extractor-v0.3".to_string(),
         }
     }
 }

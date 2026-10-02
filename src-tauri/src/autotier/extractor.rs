@@ -17,7 +17,7 @@ use super::features::{CountBucket, ExtractionStatus, RoutingFeatures, TokenBucke
 use super::{AgentType, SessionIdHash};
 
 /// 当前特征提取器版本。任何提取逻辑变更必须 bump。
-pub const FEATURE_VERSION: &str = "claude-extractor-v0.2";
+pub const FEATURE_VERSION: &str = "claude-extractor-v0.3";
 
 /// 上下文 token 估算除数（约 4 字符 ≈ 1 token 的经验值）。
 const CHARS_PER_TOKEN: u32 = 4;
@@ -56,6 +56,9 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
     let mut constraint_count: u32 = 0;
     let mut code_block_count: u32 = 0;
     let mut file_path_count: u32 = 0;
+    let mut reasoning_keyword_count: u32 = 0;
+    let mut error_signal_count: u32 = 0;
+    let mut unfenced_code_hits: u32 = 0;
     let mut total_chars: u64 = 0;
     let mut cache_write_chars: u64 = 0;
 
@@ -79,6 +82,9 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
                         constraint_count += count_constraints(text);
                         code_block_count += count_code_fences(text);
                         file_path_count += count_file_paths(text);
+                        reasoning_keyword_count += count_reasoning_keywords(text);
+                        error_signal_count += count_error_signals(text);
+                        unfenced_code_hits += count_unfenced_code_lines(text);
                     }
                 }
                 "tool_use" => {
@@ -170,7 +176,11 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
         tool_result_count: tool_results,
         has_error_tool_result,
         constraint_count,
-        code_structure_score: code_structure_score(code_block_count, file_path_count),
+        code_structure_score: code_structure_score(
+            code_block_count,
+            file_path_count,
+            unfenced_code_hits,
+        ),
         has_image_or_file,
         context_token_bucket: TokenBucket::from_tokens(
             (total_chars / CHARS_PER_TOKEN as u64) as u32,
@@ -178,6 +188,9 @@ pub fn extract_features(body: &Value, app_type: AgentType, session_hash: &str) -
         cache_read_tokens: 0, // 请求到达时未知，由 Usage Finalize 阶段回填
         cache_write_tokens: (cache_write_chars / CHARS_PER_TOKEN as u64) as u32,
         has_effort_or_thinking,
+        reasoning_keyword_count,
+        error_signal_count,
+        unfenced_code_hits,
         recent_complexity_window: Vec::new(), // 由 Decision Engine 经 Session State 注入
         session_id_hash: SessionIdHash(session_hash.to_string()),
         feature_version: FEATURE_VERSION.to_string(),
@@ -246,6 +259,83 @@ fn count_constraints(text: &str) -> u32 {
         .sum()
 }
 
+/// 推理关键词计数：中英文推理/证明类强信号（聊天场景的主要语义复杂度来源）。
+fn count_reasoning_keywords(text: &str) -> u32 {
+    const KEYWORDS: &[&str] = &[
+        "证明",
+        "推导",
+        "论证",
+        "prove",
+        "derive",
+        "derivation",
+        "rigorous",
+    ];
+    let lower = text.to_lowercase();
+    KEYWORDS
+        .iter()
+        .map(|k| lower.matches(k).count() as u32)
+        .sum()
+}
+
+/// 报错信号计数：用户消息中包含的错误堆栈/报错关键词。
+fn count_error_signals(text: &str) -> u32 {
+    const KEYWORDS: &[&str] = &[
+        "traceback",
+        "error:",
+        "exception",
+        "stacktrace",
+        "stack trace",
+        "报错",
+        "越界",
+        "异常",
+        "崩溃",
+        "segmentation fault",
+    ];
+    let lower = text.to_lowercase();
+    KEYWORDS
+        .iter()
+        .map(|k| lower.matches(k).count() as u32)
+        .sum()
+}
+
+/// 无围栏代码信号：未包在 ``` 中但明显是代码的行数。
+/// 判定：行内出现 ASCII 函数调用/定义记号（`name(...)` 或常见关键字开头）。
+fn count_unfenced_code_lines(text: &str) -> u32 {
+    let mut in_fence = false;
+    text.lines()
+        .filter(|line| {
+            let t = line.trim();
+            if t.starts_with("```") {
+                in_fence = !in_fence;
+                return false;
+            }
+            if in_fence || t.is_empty() || t.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c)) {
+                return false; // 围栏内/含中文的行都不算
+            }
+            let starts_kw = [
+                "def ",
+                "import ",
+                "from ",
+                "function ",
+                "const ",
+                "let ",
+                "var ",
+                "class ",
+                "return ",
+                "if ",
+                "for ",
+                "while ",
+                "elif ",
+                "else",
+            ]
+            .iter()
+            .any(|k| t.starts_with(k));
+            let has_call = t.contains('(') && t.contains(')');
+            (starts_kw && t.ends_with(':')) || has_call
+        })
+        .count() as u32
+}
+
 /// 代码块围栏（```）数量。
 fn count_code_fences(text: &str) -> u32 {
     text.matches("```").count() as u32 / 2
@@ -267,9 +357,9 @@ fn count_file_paths(text: &str) -> u32 {
         .count() as u32
 }
 
-/// 代码结构复杂度评分（0.0–1.0）：代码块与文件路径信号的加权和，封顶 1.0。
-fn code_structure_score(code_blocks: u32, file_paths: u32) -> f32 {
-    let raw = code_blocks as f32 * 0.15 + file_paths as f32 * 0.1;
+/// 代码结构复杂度评分（0.0–1.0）：代码块、文件路径与无围栏代码信号的加权和，封顶 1.0。
+fn code_structure_score(code_blocks: u32, file_paths: u32, unfenced_hits: u32) -> f32 {
+    let raw = code_blocks as f32 * 0.15 + file_paths as f32 * 0.1 + unfenced_hits as f32 * 0.05;
     raw.clamp(0.0, 1.0)
 }
 
@@ -366,6 +456,53 @@ mod tests {
         let f = extract(body);
         assert_eq!(f.tool_result_count, 2);
         assert!(f.has_error_tool_result);
+    }
+
+    // --- 聊天场景语义信号（v0.3）---
+
+    #[test]
+    fn reasoning_keywords_counted_zh_and_en() {
+        let body = json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "请证明这个引理，并给出 rigorous derivation 的推导过程"}]
+        });
+        let f = extract(body);
+        // 证明 + 推导 + rigorous + derivation = 4
+        assert_eq!(f.reasoning_keyword_count, 4);
+    }
+
+    #[test]
+    fn error_signals_counted_from_user_text() {
+        let body = json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "Traceback (most recent call last):\nError: 数组越界，程序异常"}]
+        });
+        let f = extract(body);
+        // traceback + error: + 越界 + 异常 = 4
+        assert_eq!(f.error_signal_count, 4);
+    }
+
+    #[test]
+    fn unfenced_code_detected_but_cjk_lines_excluded() {
+        let body = json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "def compute(x):\n    return x + 1\n打印结果看看"}]
+        });
+        let f = extract(body);
+        // "def compute(x):" 命中；"return x + 1" 无调用记号不命中；中文行排除
+        assert_eq!(f.unfenced_code_hits, 1);
+    }
+
+    #[test]
+    fn unfenced_code_feeds_code_structure_score() {
+        let body = json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "import os\ndef main():\n    print(os.getcwd())"}]
+        });
+        let f = extract(body);
+        // import os 无调用不命中；def main(): 与 print(os.getcwd()) 命中 → 2 × 0.05 = 0.1
+        assert!(f.unfenced_code_hits >= 2);
+        assert!((f.code_structure_score - f.unfenced_code_hits as f32 * 0.05).abs() < 1e-6);
     }
 
     // --- 代码块与文件路径 ---

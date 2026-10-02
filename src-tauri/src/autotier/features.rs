@@ -133,6 +133,16 @@ pub struct RoutingFeatures {
     pub cache_write_tokens: u32,
     /// 是否包含 Effort/Thinking 标记。
     pub has_effort_or_thinking: bool,
+    /// 推理关键词计数（证明/推导/论证/prove/derive，中英文）。
+    /// 聊天场景没有工具循环时的主要语义复杂度信号。
+    #[serde(default)]
+    pub reasoning_keyword_count: u32,
+    /// 用户消息中的报错信号计数（Traceback/Error:/报错/越界/异常/exception）。
+    #[serde(default)]
+    pub error_signal_count: u32,
+    /// 无围栏代码信号：未包在 ``` 中但明显是代码的行/记号数。
+    #[serde(default)]
+    pub unfenced_code_hits: u32,
     /// 最近复杂度窗口（滑动窗口，最新在前或按实现约定）。
     pub recent_complexity_window: Vec<f32>,
     /// Session ID 哈希（不保存完整 Session ID）。
@@ -162,9 +172,12 @@ impl RoutingFeatures {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             has_effort_or_thinking: false,
+            reasoning_keyword_count: 0,
+            error_signal_count: 0,
+            unfenced_code_hits: 0,
             recent_complexity_window: Vec::new(),
             session_id_hash: SessionIdHash(session_hash.to_string()),
-            feature_version: "claude-extractor-v0.2".to_string(),
+            feature_version: FEATURE_VERSION.to_string(),
             extraction_status: ExtractionStatus::default(),
         }
     }
@@ -174,7 +187,7 @@ impl RoutingFeatures {
 ///
 /// 注意：此常量硬编码，与 `extractor::FEATURE_VERSION` 保持同步。
 /// 任何提取逻辑变更必须同时 bump 两处。
-pub const FEATURE_VERSION: &str = "claude-extractor-v0.2";
+pub const FEATURE_VERSION: &str = "claude-extractor-v0.3";
 
 // ===========================================================================
 // 测试
@@ -232,7 +245,10 @@ mod tests {
         assert_eq!(f.message_count_bucket, CountBucket::Zero);
         assert!(!f.has_error_tool_result);
         assert!(f.recent_complexity_window.is_empty());
-        assert_eq!(f.feature_version, "claude-extractor-v0.2");
+        assert_eq!(f.reasoning_keyword_count, 0);
+        assert_eq!(f.error_signal_count, 0);
+        assert_eq!(f.unfenced_code_hits, 0);
+        assert_eq!(f.feature_version, "claude-extractor-v0.3");
         assert_eq!(f.extraction_status, ExtractionStatus::Success);
     }
 
@@ -254,9 +270,12 @@ mod tests {
             cache_read_tokens: 8000,
             cache_write_tokens: 2000,
             has_effort_or_thinking: true,
+            reasoning_keyword_count: 0,
+            error_signal_count: 0,
+            unfenced_code_hits: 0,
             recent_complexity_window: vec![0.3, 0.5, 0.6],
             session_id_hash: SessionIdHash("hash-xyz".to_string()),
-            feature_version: "claude-extractor-v0.2".to_string(),
+            feature_version: "claude-extractor-v0.3".to_string(),
             extraction_status: ExtractionStatus::Success,
         };
 

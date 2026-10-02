@@ -41,6 +41,11 @@ mod usage_events;
 mod usage_script;
 
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+// Shadow 评测/回放工具需要的纯函数决策核心（autotier 模块本身私有，故根导出）
+pub use autotier::{
+    extract_features, shadow_decide, DecisionId, DecisionInput, ModelSlot, ReasonCode, RoutingMode,
+    RoutingSessionState, FEATURE_VERSION,
+};
 pub use codex_config::{
     get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
 };
