@@ -925,6 +925,68 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_keyword_alone_recommends_mid_with_dedicated_reason() {
+        let mut input = make_simple_input();
+        input.features.user_message_weighted_length = 100; // 去掉 ShortUserRequest 的 -0.1
+        input.features.reasoning_keyword_count = 1; // +0.25
+        let result = shadow_decide(&input, 0);
+        assert!((result.complexity_score - 0.25).abs() < 1e-6);
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Mid));
+        assert!(result
+            .reason_codes
+            .contains(&ReasonCode::ReasoningKeywordSignal));
+        // 关键词不得复用 ReasoningSignal（该码只属于 thinking/effort 标记）
+        assert!(!result.reason_codes.contains(&ReasonCode::ReasoningSignal));
+    }
+
+    #[test]
+    fn dense_reasoning_keywords_score_higher() {
+        let mut input = make_simple_input();
+        input.features.user_message_weighted_length = 100;
+        input.features.reasoning_keyword_count = 3; // +0.4
+        let result = shadow_decide(&input, 0);
+        assert!((result.complexity_score - 0.4).abs() < 1e-6);
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Mid));
+    }
+
+    #[test]
+    fn thinking_and_keywords_emit_distinct_reasons_once_each() {
+        let mut input = make_simple_input();
+        input.features.user_message_weighted_length = 100;
+        input.features.has_effort_or_thinking = true; // +0.1 ReasoningSignal
+        input.features.reasoning_keyword_count = 2; // +0.25 ReasoningKeywordSignal
+        let result = shadow_decide(&input, 0);
+        assert!((result.complexity_score - 0.35).abs() < 1e-6);
+        let count = |code: ReasonCode| result.reason_codes.iter().filter(|&&r| r == code).count();
+        assert_eq!(count(ReasonCode::ReasoningSignal), 1);
+        assert_eq!(count(ReasonCode::ReasoningKeywordSignal), 1);
+    }
+
+    #[test]
+    fn error_context_alone_recommends_mid() {
+        let mut input = make_simple_input();
+        input.features.user_message_weighted_length = 100;
+        input.features.error_signal_count = 2; // +0.25
+        let result = shadow_decide(&input, 0);
+        assert!((result.complexity_score - 0.25).abs() < 1e-6);
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Mid));
+        assert!(result
+            .reason_codes
+            .contains(&ReasonCode::ErrorContextPresent));
+    }
+
+    #[test]
+    fn error_context_with_code_structure_adds_debug_bonus() {
+        let mut input = make_simple_input();
+        input.features.user_message_weighted_length = 100;
+        input.features.error_signal_count = 1; // +0.25
+        input.features.code_structure_score = 0.5; // +0.05 多文件 + 0.25 调试加成
+        let result = shadow_decide(&input, 0);
+        assert!((result.complexity_score - 0.55).abs() < 1e-6);
+        assert_eq!(result.recommended_slot, Some(ModelSlot::Strong));
+    }
+
+    #[test]
     fn confidence_within_bounds() {
         for input in [make_simple_input(), make_test_input(), make_complex_input()] {
             let result = shadow_decide(&input, 0);

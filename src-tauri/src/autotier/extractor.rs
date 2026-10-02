@@ -309,7 +309,8 @@ fn count_unfenced_code_lines(text: &str) -> u32 {
                 in_fence = !in_fence;
                 return false;
             }
-            if in_fence || t.is_empty() || t.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c)) {
+            if in_fence || t.is_empty() || t.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
+            {
                 return false; // 围栏内/含中文的行都不算
             }
             let starts_kw = [
